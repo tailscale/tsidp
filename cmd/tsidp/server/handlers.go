@@ -10,10 +10,13 @@ import (
 	"log"
 	"net/http"
 	"net/netip"
+	"strings"
 
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/ipn"
 	"tailscale.com/types/views"
+	"tailscale.com/util/mak"
+	"tailscale.com/util/rands"
 )
 
 // openIDProviderMetadata is a partial representation of OpenID Provider Metadata.
@@ -311,4 +314,132 @@ type oauthErrorResponse struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description,omitempty"`
 	ErrorURI         string `json:"error_uri,omitempty"`
+}
+
+// serveClients handles the /clients/ endpoints for managing OAuth clients
+// Migrated from legacy/tsidp.go:2055-2094
+func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
+	if isFunnelRequest(r) {
+		http.Error(w, "tsidp: not found", http.StatusNotFound)
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/clients/")
+
+	if path == "new" {
+		s.serveNewClient(w, r)
+		return
+	}
+
+	if path == "" {
+		s.serveGetClientsList(w, r)
+		return
+	}
+
+	s.mu.Lock()
+	c, ok := s.funnelClients[path]
+	s.mu.Unlock()
+	if !ok {
+		http.Error(w, "tsidp: not found", http.StatusNotFound)
+		return
+	}
+
+	switch r.Method {
+	case "DELETE":
+		s.serveDeleteClient(w, r, path)
+	case "GET":
+		json.NewEncoder(w).Encode(&FunnelClient{
+			ID:           c.ID,
+			Name:         c.Name,
+			Secret:       "",
+			RedirectURIs: c.RedirectURIs,
+		})
+	default:
+		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// serveNewClient creates a new OAuth client
+// Migrated from legacy/tsidp.go:2096-2126
+func (s *IDPServer) serveNewClient(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	redirectURI := r.FormValue("redirect_uri")
+	if redirectURI == "" {
+		http.Error(w, "tsidp: must provide redirect_uri", http.StatusBadRequest)
+		return
+	}
+	clientID := rands.HexString(32)
+	clientSecret := rands.HexString(64)
+	newClient := FunnelClient{
+		ID:           clientID,
+		Secret:       clientSecret,
+		Name:         r.FormValue("name"),
+		RedirectURIs: []string{redirectURI},
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	mak.Set(&s.funnelClients, clientID, &newClient)
+	if err := s.storeFunnelClientsLocked(); err != nil {
+		log.Printf("could not write funnel clients db: %v", err)
+		http.Error(w, "tsidp: could not write funnel clients to db", http.StatusInternalServerError)
+		// delete the new client to avoid inconsistent state between memory
+		// and disk
+		delete(s.funnelClients, clientID)
+		return
+	}
+	json.NewEncoder(w).Encode(newClient)
+}
+
+// serveGetClientsList returns a list of all OAuth clients
+// Migrated from legacy/tsidp.go:2128-2145
+func (s *IDPServer) serveGetClientsList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.mu.Lock()
+	redactedClients := make([]FunnelClient, 0, len(s.funnelClients))
+	for _, c := range s.funnelClients {
+		redactedClients = append(redactedClients, FunnelClient{
+			ID:           c.ID,
+			Name:         c.Name,
+			Secret:       "",
+			RedirectURIs: c.RedirectURIs,
+		})
+	}
+	s.mu.Unlock()
+	json.NewEncoder(w).Encode(redactedClients)
+}
+
+// serveDeleteClient deletes an OAuth client
+// Migrated from legacy/tsidp.go:2239-2265
+func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, clientID string) {
+	if r.Method != "DELETE" {
+		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.funnelClients == nil {
+		http.Error(w, "tsidp: client not found", http.StatusNotFound)
+		return
+	}
+	if _, ok := s.funnelClients[clientID]; !ok {
+		http.Error(w, "tsidp: client not found", http.StatusNotFound)
+		return
+	}
+	deleted := s.funnelClients[clientID]
+	delete(s.funnelClients, clientID)
+	if err := s.storeFunnelClientsLocked(); err != nil {
+		log.Printf("could not write funnel clients db: %v", err)
+		http.Error(w, "tsidp: could not write funnel clients to db", http.StatusInternalServerError)
+		// restore the deleted value to avoid inconsistent state between memory
+		// and disk
+		s.funnelClients[clientID] = deleted
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

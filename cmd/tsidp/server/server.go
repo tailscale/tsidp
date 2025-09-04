@@ -236,12 +236,15 @@ func (s *IDPServer) newMux() *http.ServeMux {
 	mux.HandleFunc("/.well-known/openid-configuration", s.serveOpenIDConfig)
 	mux.HandleFunc("/.well-known/oauth-authorization-server", s.serveOAuthMetadata)
 	
+	// Register /clients/ endpoint
+	// Migrated from legacy/tsidp.go:684
+	mux.HandleFunc("/clients/", s.serveClients)
+	
 	// TODO: Register remaining handlers
 	// mux.HandleFunc("/authorize", s.authorize)
 	// mux.HandleFunc("/token", s.serveToken)
 	// mux.HandleFunc("/introspect", s.serveIntrospect)
 	// mux.HandleFunc("/userinfo", s.serveUserInfo)
-	// mux.HandleFunc("/clients/", s.serveClients)
 	// mux.HandleFunc("/register", s.serveDynamicClientRegistration)
 	
 	// Register UI handler - must be last as it handles "/"
