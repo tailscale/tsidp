@@ -217,6 +217,244 @@ func TestResourceIndicators(t *testing.T) {
 	}
 }
 
+// TestIntrospectTokenExpiration tests introspection of expired tokens
+// Migrated from legacy/tsidp_test.go:2332-2375
+func TestIntrospectTokenExpiration(t *testing.T) {
+	s := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		accessToken:   make(map[string]*AuthRequest),
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	// Create an expired token
+	expiredToken := "expired-token"
+	s.accessToken[expiredToken] = &AuthRequest{
+		ValidTill: time.Now().Add(-10 * time.Minute), // expired
+		FunnelRP: &FunnelClient{
+			ID:     "test-client",
+			Secret: "test-secret",
+		},
+		ClientID: "test-client",
+	}
+
+	// Set up the funnel client
+	s.funnelClients["test-client"] = &FunnelClient{
+		ID:     "test-client",
+		Secret: "test-secret",
+	}
+
+	form := url.Values{}
+	form.Set("token", expiredToken)
+	form.Set("client_id", "test-client")
+	form.Set("client_secret", "test-secret")
+
+	req := httptest.NewRequest("POST", "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rr := httptest.NewRecorder()
+	s.serveIntrospect(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	// Check response shows token as inactive
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if active, ok := resp["active"].(bool); !ok || active {
+		t.Error("expected active: false for expired token")
+	}
+
+	// Verify token was deleted
+	if _, exists := s.accessToken[expiredToken]; exists {
+		t.Error("expected expired token to be deleted")
+	}
+}
+
+// TestIntrospectWithResources tests introspection with resources
+// Migrated from legacy/tsidp_test.go:2377-2431
+func TestIntrospectWithResources(t *testing.T) {
+	s := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		accessToken:   make(map[string]*AuthRequest),
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	// Create a token with resources
+	activeToken := "active-token-with-resources"
+	s.accessToken[activeToken] = &AuthRequest{
+		ValidTill: time.Now().Add(10 * time.Minute), // not expired
+		FunnelRP: &FunnelClient{
+			ID:     "test-client",
+			Secret: "test-secret",
+		},
+		ClientID:  "test-client",
+		Resources: []string{"https://api1.example.com", "https://api2.example.com"},
+		Scopes:    []string{"openid", "email"}, // Add scopes for testing
+		JTI:       "test-jti-12345",            // Add JTI for testing new claim
+		RemoteUser: &apitype.WhoIsResponse{
+			Node: &tailcfg.Node{
+				User: 12345,
+			},
+			UserProfile: &tailcfg.UserProfile{
+				LoginName: "user@example.com",
+			},
+		},
+	}
+
+	// Set up the funnel client
+	s.funnelClients["test-client"] = &FunnelClient{
+		ID:     "test-client",
+		Secret: "test-secret",
+	}
+
+	form := url.Values{}
+	form.Set("token", activeToken)
+	form.Set("client_id", "test-client")
+	form.Set("client_secret", "test-secret")
+
+	req := httptest.NewRequest("POST", "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rr := httptest.NewRecorder()
+	s.serveIntrospect(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	// Check response shows token as active with resources in audience
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if active, ok := resp["active"].(bool); !ok || !active {
+		t.Error("expected active: true for valid token")
+	}
+
+	// Check that resources are included in audience
+	if aud, ok := resp["aud"].([]interface{}); ok {
+		expectedAudiences := []string{"test-client", "https://api1.example.com", "https://api2.example.com"}
+		if len(aud) != len(expectedAudiences) {
+			t.Errorf("expected %d audience values, got %d", len(expectedAudiences), len(aud))
+		}
+	} else {
+		t.Error("expected aud claim to be an array")
+	}
+}
+
+// TestIntrospectionRFC7662Compliance tests RFC 7662 compliance
+// Migrated from legacy/tsidp_test.go:2433-2512
+func TestIntrospectionRFC7662Compliance(t *testing.T) {
+	s := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		loopbackURL:   "http://localhost:8080",
+		accessToken:   make(map[string]*AuthRequest),
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	// Create a token with all fields populated
+	activeToken := "test-token-rfc-compliance"
+	s.accessToken[activeToken] = &AuthRequest{
+		ValidTill: time.Now().Add(10 * time.Minute),
+		FunnelRP: &FunnelClient{
+			ID:     "test-client",
+			Secret: "test-secret",
+		},
+		ClientID:  "test-client",
+		Resources: []string{"https://api.example.com"},
+		Scopes:    []string{"openid", "profile", "email"},
+		JTI:       "unique-jwt-id-12345",
+		RemoteUser: &apitype.WhoIsResponse{
+			Node: &tailcfg.Node{
+				User: 12345,
+			},
+			UserProfile: &tailcfg.UserProfile{
+				LoginName:     "user@example.com",
+				DisplayName:   "Test User",
+				ProfilePicURL: "https://example.com/pic.jpg",
+			},
+		},
+	}
+
+	// Set up the funnel client
+	s.funnelClients["test-client"] = &FunnelClient{
+		ID:     "test-client",
+		Secret: "test-secret",
+	}
+
+	form := url.Values{}
+	form.Set("token", activeToken)
+	form.Set("client_id", "test-client")
+	form.Set("client_secret", "test-secret")
+
+	req := httptest.NewRequest("POST", "/introspect", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rr := httptest.NewRecorder()
+	s.serveIntrospect(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	// Check all RFC 7662 required and recommended claims
+	requiredClaims := map[string]bool{
+		"active":             true,
+		"client_id":          true,
+		"exp":                true,
+		"iat":                true,
+		"nbf":                true, // NEW
+		"sub":                true,
+		"aud":                true,
+		"iss":                true, // NEW
+		"jti":                true, // NEW
+		"username":           true, // NEW
+		"token_type":         true,
+		"scope":              true,
+		"email":              true, // from scope
+		"preferred_username": true, // from scope
+		"picture":            true, // from scope
+	}
+
+	for claim, required := range requiredClaims {
+		if _, ok := resp[claim]; !ok && required {
+			t.Errorf("missing required claim: %s", claim)
+		}
+	}
+
+	// Verify specific claim values
+	if username, ok := resp["username"].(string); !ok || username != "user@example.com" {
+		t.Errorf("expected username to be 'user@example.com', got: %v", resp["username"])
+	}
+	if iss, ok := resp["iss"].(string); !ok || iss != s.serverURL {
+		t.Errorf("expected iss to be '%s', got: %v", s.serverURL, resp["iss"])
+	}
+	if jti, ok := resp["jti"].(string); !ok || jti != "unique-jwt-id-12345" {
+		t.Errorf("expected jti to be 'unique-jwt-id-12345', got: %v", resp["jti"])
+	}
+
+	// Check that nbf is set and equals iat
+	if nbf, ok := resp["nbf"].(float64); ok {
+		if iat, ok := resp["iat"].(float64); ok {
+			if nbf != iat {
+				t.Errorf("expected nbf to equal iat, got nbf=%v, iat=%v", nbf, iat)
+			}
+		}
+	} else {
+		t.Error("nbf claim missing or wrong type")
+	}
+}
+
 // marshalCapRules is a helper to convert stsCapRule slice to JSON for testing
 // Migrated from legacy/tsidp_test.go:2653-2661
 func marshalCapRules(rules []stsCapRule) []tailcfg.RawMessage {

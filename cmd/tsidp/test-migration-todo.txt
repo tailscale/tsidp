@@ -27,9 +27,9 @@
 ❌ TestAZPClaimWithMultipleAudiences - Tests azp claim handling with multiple audiences
 
 ### Token Introspection Tests
-❌ TestIntrospectTokenExpiration - Tests introspection of expired tokens
-❌ TestIntrospectWithResources - Tests introspection with resources
-❌ TestIntrospectionRFC7662Compliance - Tests RFC 7662 compliance
+✅ TestIntrospectTokenExpiration - Tests introspection of expired tokens (migrated to server/token_test.go)
+✅ TestIntrospectWithResources - Tests introspection with resources (migrated to server/token_test.go)
+✅ TestIntrospectionRFC7662Compliance - Tests RFC 7662 compliance (migrated to server/token_test.go)
 
 ### Resource Indicators Tests (RFC 8707)
 ✅ TestResourceIndicators - Tests RFC 8707 resource indicators support (migrated to server/token_test.go)
@@ -52,9 +52,9 @@
 
 ## Summary Statistics
 - Total tests in legacy: 22
-- Migrated: 12 (55%)
+- Migrated: 15 (68%)
 - Partially migrated: 1 (5%)
-- Not migrated: 9 (41%)
+- Not migrated: 6 (27%)
 
 ## Migration Priority (Recommended Order)
 
