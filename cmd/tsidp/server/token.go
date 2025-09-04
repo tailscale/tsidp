@@ -722,26 +722,10 @@ func writeTokenEndpointError(w http.ResponseWriter, statusCode int, errorCode, e
 	})
 }
 
-// withExtraClaims merges extra claims from capability rules
-// This is a placeholder - needs the full implementation from legacy code
+// withExtraClaims merges extra claims from capability rules for tailscaleClaims
+// This wraps the generic version to work specifically with tailscaleClaims
 func withExtraClaims(claims tailscaleClaims, rules []capRule) (map[string]interface{}, error) {
-	// Convert claims to map
-	result := make(map[string]interface{})
-	claimsJSON, err := json.Marshal(claims)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(claimsJSON, &result); err != nil {
-		return nil, err
-	}
-	
-	// Merge extra claims from rules
-	extraClaims := flattenExtraClaims(rules)
-	for k, v := range extraClaims {
-		result[k] = v
-	}
-	
-	return result, nil
+	return withExtraClaimsGeneric(claims, rules)
 }
 
 // flattenExtraClaims merges all ExtraClaims from a slice of capRule into a single map
