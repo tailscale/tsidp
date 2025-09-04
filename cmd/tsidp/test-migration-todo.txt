@@ -35,8 +35,8 @@
 ❌ TestResourceIndicators - Tests RFC 8707 resource indicators support
 
 ### PKCE Tests (RFC 7636)
-❌ TestPKCE - Tests PKCE implementation
-🔄 TestPKCEWithRefreshToken - Tests PKCE with refresh tokens (partial coverage in oauth/oauth_test.go)
+✅ TestPKCE - Tests PKCE implementation (migrated to server/authorize_test.go)
+✅ TestPKCEWithRefreshToken - Tests PKCE with refresh tokens (migrated to server/authorize_test.go)
 
 ### Scope Tests
 ✅ TestScopeHandling - Tests OAuth scope handling (migrated to server/authorize_test.go)
@@ -52,9 +52,9 @@
 
 ## Summary Statistics
 - Total tests in legacy: 22
-- Migrated: 9 (41%)
-- Partially migrated: 2 (9%)
-- Not migrated: 11 (50%)
+- Migrated: 11 (50%)
+- Partially migrated: 1 (5%)
+- Not migrated: 10 (45%)
 
 ## Migration Priority (Recommended Order)
 
