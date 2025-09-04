@@ -32,7 +32,7 @@
 ❌ TestIntrospectionRFC7662Compliance - Tests RFC 7662 compliance
 
 ### Resource Indicators Tests (RFC 8707)
-❌ TestResourceIndicators - Tests RFC 8707 resource indicators support
+✅ TestResourceIndicators - Tests RFC 8707 resource indicators support (migrated to server/token_test.go)
 
 ### PKCE Tests (RFC 7636)
 ✅ TestPKCE - Tests PKCE implementation (migrated to server/authorize_test.go)
@@ -52,9 +52,9 @@
 
 ## Summary Statistics
 - Total tests in legacy: 22
-- Migrated: 11 (50%)
+- Migrated: 12 (55%)
 - Partially migrated: 1 (5%)
-- Not migrated: 10 (45%)
+- Not migrated: 9 (41%)
 
 ## Migration Priority (Recommended Order)
 
