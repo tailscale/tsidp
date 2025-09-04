@@ -23,3 +23,4 @@ store/ - data persistence logic
 
 - run tests after changes
 - to run tests: go test -v ./...
+- it is ok to create new files like server/authorize.go for /authorize to keep server/handlers.go easier to understand.
