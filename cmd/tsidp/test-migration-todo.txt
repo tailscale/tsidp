@@ -39,7 +39,7 @@
 🔄 TestPKCEWithRefreshToken - Tests PKCE with refresh tokens (partial coverage in oauth/oauth_test.go)
 
 ### Scope Tests
-❌ TestScopeHandling - Tests OAuth scope handling
+✅ TestScopeHandling - Tests OAuth scope handling (migrated to server/authorize_test.go)
 
 ### Cleanup Tests
 🔄 TestCleanupExpiredTokens - Tests expired token cleanup (basic version exists in server/server_test.go)
@@ -52,9 +52,9 @@
 
 ## Summary Statistics
 - Total tests in legacy: 22
-- Migrated: 8 (36%)
+- Migrated: 9 (41%)
 - Partially migrated: 2 (9%)
-- Not migrated: 12 (55%)
+- Not migrated: 11 (50%)
 
 ## Migration Priority (Recommended Order)
 
