@@ -244,8 +244,11 @@ func (s *IDPServer) newMux() *http.ServeMux {
 	// Migrated from legacy/tsidp.go:684
 	mux.HandleFunc("/clients/", s.serveClients)
 	
+	// Register /token endpoint
+	// Migrated from legacy/tsidp.go:681
+	mux.HandleFunc("/token", s.serveToken)
+	
 	// TODO: Register remaining handlers
-	// mux.HandleFunc("/token", s.serveToken)
 	// mux.HandleFunc("/introspect", s.serveIntrospect)
 	// mux.HandleFunc("/userinfo", s.serveUserInfo)
 	// mux.HandleFunc("/register", s.serveDynamicClientRegistration)
