@@ -816,6 +816,137 @@ func flattenExtraClaims(rules []capRule) map[string]any {
 	return result
 }
 
+// serveIntrospect handles the /introspect endpoint for token introspection (RFC 7662)
+// Migrated from legacy/tsidp.go:1475-1602
+func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse the token parameter
+	token := r.FormValue("token")
+	if token == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "token is required")
+		return
+	}
+
+	// token_type_hint is optional, we can ignore it for now
+	// since we only have one type of token (access tokens)
+
+	// Look up the token
+	s.mu.Lock()
+	ar, tokenExists := s.accessToken[token]
+	s.mu.Unlock()
+
+	// Initialize response with active: false (default for invalid/expired tokens)
+	resp := map[string]any{
+		"active": false,
+	}
+
+	// Check if token exists and handle expiration
+	if tokenExists {
+		now := time.Now()
+		if ar.ValidTill.Before(now) {
+			// Token expired, clean it up
+			s.mu.Lock()
+			delete(s.accessToken, token)
+			s.mu.Unlock()
+			tokenExists = false
+		}
+	}
+
+	// If token exists and is not expired, we need to authenticate the client
+	if tokenExists {
+		// Check if the client is properly authenticated
+		// Any authenticated client can introspect any token
+		if s.identifyClient(r) == "" {
+			// Return inactive token for unauthorized clients
+			// This prevents token scanning attacks
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		// Token is valid and client is authorized, return active with metadata
+		resp["active"] = true
+		resp["client_id"] = ar.ClientID
+		resp["exp"] = ar.ValidTill.Unix()
+		resp["iat"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // issued 5 min before expiry
+		resp["nbf"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // not before time (same as iat)
+		resp["token_type"] = "Bearer"
+
+		// Add issuer claim
+		if ar.LocalRP {
+			resp["iss"] = s.loopbackURL
+		} else {
+			resp["iss"] = s.serverURL
+		}
+
+		// Add jti if available
+		if ar.JTI != "" {
+			resp["jti"] = ar.JTI
+		}
+
+		if ar.RemoteUser != nil && ar.RemoteUser.Node != nil {
+			resp["sub"] = fmt.Sprintf("%d", ar.RemoteUser.Node.User)
+
+			// Add username claim (RFC 7662 recommendation)
+			if ar.RemoteUser.UserProfile != nil && ar.RemoteUser.UserProfile.LoginName != "" {
+				resp["username"] = ar.RemoteUser.UserProfile.LoginName
+			}
+
+			// Only include claims based on granted scopes
+			for _, scope := range ar.Scopes {
+				switch scope {
+				case "profile":
+					if ar.RemoteUser.UserProfile != nil {
+						if username, _, ok := strings.Cut(ar.RemoteUser.UserProfile.LoginName, "@"); ok {
+							resp["preferred_username"] = username
+						}
+						resp["picture"] = ar.RemoteUser.UserProfile.ProfilePicURL
+					}
+				case "email":
+					if ar.RemoteUser.UserProfile != nil {
+						resp["email"] = ar.RemoteUser.UserProfile.LoginName
+					}
+				}
+			}
+		}
+
+		// Add audience - for exchanged tokens use the audiences field, otherwise build from clientID and resources
+		var audience []string
+		if ar.IsExchangedToken && len(ar.Audiences) > 0 {
+			audience = ar.Audiences
+		} else {
+			if ar.ClientID != "" {
+				audience = append(audience, ar.ClientID)
+			}
+			if len(ar.Resources) > 0 {
+				audience = append(audience, ar.Resources...)
+			}
+		}
+		if len(audience) > 0 {
+			resp["aud"] = audience
+		}
+
+		// Add scope if available
+		if len(ar.Scopes) > 0 {
+			resp["scope"] = strings.Join(ar.Scopes, " ")
+		}
+
+		// Include act claim if present (RFC 8693)
+		if ar.ActorInfo != nil {
+			resp["act"] = ar.ActorInfo
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // allowRelyingParty checks if the relying party is allowed to access the token
 // This method needs to be added to AuthRequest
 func (ar *AuthRequest) allowRelyingParty(r *http.Request, lc interface{}) error {
