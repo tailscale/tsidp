@@ -5,7 +5,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -34,10 +33,6 @@ import (
 // Migrated from legacy/tsidp.go:58
 type CtxConn struct{}
 
-// funnelClientsFile is the file where client IDs and secrets for OIDC clients
-// accessing the IDP over Funnel are persisted.
-// Migrated from legacy/tsidp.go:60-62
-const funnelClientsFile = "oidc-funnel-clients.json"
 
 // IDPServer handles OIDC identity provider operations
 // Migrated from legacy/tsidp.go:306-323
@@ -137,24 +132,6 @@ type ActorClaim struct {
 }
 
 // FunnelClient represents an OAuth client accessing the IDP via Funnel
-// Migrated from legacy/tsidp.go:2006-2024
-type FunnelClient struct {
-	ID                      string    `json:"id"`
-	Secret                  string    `json:"secret"`
-	Name                    string    `json:"name"`
-	RedirectURIs            []string  `json:"redirect_uris"`
-	TokenEndpointAuthMethod string    `json:"token_endpoint_auth_method,omitempty"`
-	GrantTypes              []string  `json:"grant_types,omitempty"`
-	ResponseTypes           []string  `json:"response_types,omitempty"`
-	Scope                   string    `json:"scope,omitempty"`
-	ClientURI               string    `json:"client_uri,omitempty"`
-	LogoURI                 string    `json:"logo_uri,omitempty"`
-	Contacts                []string  `json:"contacts,omitempty"`
-	ApplicationType         string    `json:"application_type,omitempty"`
-	DynamicallyRegistered   bool      `json:"dynamically_registered,omitempty"`
-	CreatedAt               time.Time `json:"created_at"`
-	LastUsed                time.Time `json:"last_used,omitempty"`
-}
 
 // signingKey represents a JWT signing key
 // Migrated from legacy/tsidp.go:2336-2339
@@ -193,12 +170,6 @@ func (s *IDPServer) SetLoopbackURL(url string) {
 	s.loopbackURL = url
 }
 
-// SetFunnelClients sets the funnel clients
-func (s *IDPServer) SetFunnelClients(clients map[string]*FunnelClient) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.funnelClients = clients
-}
 
 // CleanupExpiredTokens removes expired tokens from memory
 // Migrated from legacy/tsidp.go:2280-2299
@@ -402,45 +373,3 @@ func ServeOnLocalTailscaled(ctx context.Context, lc *local.Client, st *ipnstate.
 }
 
 // getFunnelClientsPath returns the full path to the funnel clients file
-func (s *IDPServer) getFunnelClientsPath() string {
-	if s.stateDir != "" {
-		return filepath.Join(s.stateDir, funnelClientsFile)
-	}
-	return funnelClientsFile
-}
-
-// LoadFunnelClients loads funnel clients from disk
-func (s *IDPServer) LoadFunnelClients() error {
-	f, err := os.Open(s.getFunnelClientsPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist yet, which is okay
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-	
-	var clients map[string]*FunnelClient
-	if err := json.NewDecoder(f).Decode(&clients); err != nil {
-		return err
-	}
-	
-	s.mu.Lock()
-	s.funnelClients = clients
-	s.mu.Unlock()
-	
-	return nil
-}
-
-// storeFunnelClientsLocked persists the funnel clients to disk
-// Caller must hold s.mu lock
-// Migrated from legacy/tsidp.go:2270-2276
-func (s *IDPServer) storeFunnelClientsLocked() error {
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(s.funnelClients); err != nil {
-		return err
-	}
-	
-	return os.WriteFile(s.getFunnelClientsPath(), buf.Bytes(), 0600)
-}

@@ -40,25 +40,6 @@ var editTmpl = template.Must(headerTmpl.New("edit").Parse(editHTML))
 
 var processStart = time.Now()
 
-// joinRedirectURIs joins multiple redirect URIs into a newline-separated string
-// Migrated from legacy/ui.go:44-46
-func joinRedirectURIs(uris []string) string {
-	return strings.Join(uris, "\n")
-}
-
-// splitRedirectURIs splits a newline-separated string into individual URIs
-// Migrated from legacy/ui.go:49-59
-func splitRedirectURIs(input string) []string {
-	lines := strings.Split(input, "\n")
-	var uris []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			uris = append(uris, trimmed)
-		}
-	}
-	return uris
-}
 
 // handleUI serves the UI for managing OAuth/OIDC clients
 // Migrated from legacy/ui.go:61-85

@@ -1,0 +1,90 @@
+# Test Migration TODO List
+# Tests that need to be migrated from legacy/ to the new app structure
+
+## Status Legend:
+# ✅ = Migrated
+# ❌ = Not migrated
+# 🔄 = Partially migrated (some functionality covered in new tests)
+
+## Tests from legacy/tsidp_test.go (20 tests total)
+
+### Client Management Tests
+✅ TestBackwardCompatibility - Tests backward compatibility for client registration fields (migrated to server/client_test.go)
+✅ TestServeDynamicClientRegistration - Tests dynamic client registration endpoint (migrated to server/client_test.go)
+✅ TestRedirectURIValidation - Tests redirect URI validation logic (migrated to server/client_test.go)
+
+### Metadata Endpoint Tests
+✅ TestMetadataEndpoints - Tests OpenID/OAuth metadata endpoints (migrated to server/handlers_test.go)
+✅ TestOAuthMetadataRefreshTokenSupport - Tests refresh token in OAuth metadata (migrated to server/handlers_test.go)
+✅ TestPKCEMetadata - Tests PKCE in metadata endpoints (migrated to server/handlers_test.go)
+
+### Token Endpoint Tests
+❌ TestRefreshTokenFlow - Tests refresh token grant flow
+❌ TestTokenEndpointUnsupportedGrantType - Tests unsupported grant type handling
+❌ TestTokenExpiration - Tests token expiration handling
+❌ TestRefreshTokenWithResources - Tests refresh tokens with resource downscoping (RFC 8707)
+❌ TestRefreshTokenScopePreservation - Tests scope preservation in refresh tokens
+❌ TestAZPClaimWithMultipleAudiences - Tests azp claim handling with multiple audiences
+
+### Token Introspection Tests
+❌ TestIntrospectTokenExpiration - Tests introspection of expired tokens
+❌ TestIntrospectWithResources - Tests introspection with resources
+❌ TestIntrospectionRFC7662Compliance - Tests RFC 7662 compliance
+
+### Resource Indicators Tests (RFC 8707)
+❌ TestResourceIndicators - Tests RFC 8707 resource indicators support
+
+### PKCE Tests (RFC 7636)
+❌ TestPKCE - Tests PKCE implementation
+🔄 TestPKCEWithRefreshToken - Tests PKCE with refresh tokens (partial coverage in oauth/oauth_test.go)
+
+### Scope Tests
+❌ TestScopeHandling - Tests OAuth scope handling
+
+### Cleanup Tests
+🔄 TestCleanupExpiredTokens - Tests expired token cleanup (basic version exists in server/server_test.go)
+
+## Tests from legacy/ui_test.go (2 tests total)
+
+### URI Helper Tests
+✅ TestSplitRedirectURIs - Tests splitting redirect URIs string into array (migrated to server/client_test.go)
+✅ TestJoinRedirectURIs - Tests joining redirect URI array into string (migrated to server/client_test.go)
+
+## Summary Statistics
+- Total tests in legacy: 22
+- Migrated: 8 (36%)
+- Partially migrated: 2 (9%)
+- Not migrated: 12 (55%)
+
+## Migration Priority (Recommended Order)
+
+### High Priority (Core OAuth/OIDC functionality)
+1. TestServeDynamicClientRegistration - Critical for client registration
+2. TestRefreshTokenFlow - Critical for token lifecycle
+3. TestTokenEndpointUnsupportedGrantType - Important for security
+4. TestPKCE - Important for public client security
+5. TestIntrospectionRFC7662Compliance - Token introspection compliance
+
+### Medium Priority (Standards compliance)
+6. TestResourceIndicators - RFC 8707 support
+7. TestRefreshTokenWithResources - Resource downscoping
+8. TestAZPClaimWithMultipleAudiences - Multi-audience support
+9. TestScopeHandling - OAuth scope handling
+10. TestIntrospectWithResources - Introspection with resources
+
+### Low Priority (Helper functions and edge cases)
+11. TestBackwardCompatibility - Client field compatibility
+12. TestRedirectURIValidation - URI validation logic
+13. TestTokenExpiration - Token expiration edge cases
+14. TestIntrospectTokenExpiration - Introspection expiration edge cases
+15. TestRefreshTokenScopePreservation - Scope preservation details
+16. TestPKCEWithRefreshToken - PKCE refresh token interaction
+17. TestCleanupExpiredTokens - Token cleanup (upgrade existing test)
+18. TestSplitRedirectURIs - Helper function
+19. TestJoinRedirectURIs - Helper function
+
+## Notes
+- Some tests may need to be split across multiple packages (e.g., token tests in token_test.go, client tests in client_test.go)
+- Consider creating integration tests for end-to-end flows
+- Some legacy tests may be redundant with the new structure and can be consolidated
+- Tests should be updated to use the new IDPServer struct and its methods directly
