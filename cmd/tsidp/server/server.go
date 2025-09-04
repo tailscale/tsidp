@@ -139,12 +139,21 @@ type ActorClaim struct {
 // FunnelClient represents an OAuth client accessing the IDP via Funnel
 // Migrated from legacy/tsidp.go:2006-2024
 type FunnelClient struct {
-	ID           string    `json:"id"`
-	Secret       string    `json:"secret"`
-	Name         string    `json:"name"`
-	RedirectURIs []string  `json:"redirect_uris"`
-	CreatedAt    time.Time `json:"created_at"`
-	LastUsed     time.Time `json:"last_used,omitempty"`
+	ID                      string    `json:"id"`
+	Secret                  string    `json:"secret"`
+	Name                    string    `json:"name"`
+	RedirectURIs            []string  `json:"redirect_uris"`
+	TokenEndpointAuthMethod string    `json:"token_endpoint_auth_method,omitempty"`
+	GrantTypes              []string  `json:"grant_types,omitempty"`
+	ResponseTypes           []string  `json:"response_types,omitempty"`
+	Scope                   string    `json:"scope,omitempty"`
+	ClientURI               string    `json:"client_uri,omitempty"`
+	LogoURI                 string    `json:"logo_uri,omitempty"`
+	Contacts                []string  `json:"contacts,omitempty"`
+	ApplicationType         string    `json:"application_type,omitempty"`
+	DynamicallyRegistered   bool      `json:"dynamically_registered,omitempty"`
+	CreatedAt               time.Time `json:"created_at"`
+	LastUsed                time.Time `json:"last_used,omitempty"`
 }
 
 // signingKey represents a JWT signing key
@@ -256,8 +265,9 @@ func (s *IDPServer) newMux() *http.ServeMux {
 	// Migrated from legacy/tsidp.go:680
 	mux.HandleFunc("/userinfo", s.serveUserInfo)
 	
-	// TODO: Register remaining handlers
-	// mux.HandleFunc("/register", s.serveDynamicClientRegistration)
+	// Register /register endpoint for Dynamic Client Registration
+	// Migrated from legacy/tsidp.go:683
+	mux.HandleFunc("/register", s.serveDynamicClientRegistration)
 	
 	// Register UI handler - must be last as it handles "/"
 	// Migrated from legacy/tsidp.go:685

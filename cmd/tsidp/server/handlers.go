@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"time"
 
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/ipn"
@@ -442,4 +443,96 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveDynamicClientRegistration handles OAuth 2.0 Dynamic Client Registration (RFC 7591)
+// Migrated from legacy/tsidp.go:2149-2237
+func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *http.Request) {
+	// Block funnel requests - dynamic registration is only available over tailnet
+	if isFunnelRequest(r) {
+		writeJSONError(w, http.StatusForbidden, "access_denied", "dynamic client registration not available over funnel")
+		return
+	}
+
+	if r.Method != "POST" {
+		writeJSONError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
+		return
+	}
+
+	// Parse registration request
+	var req struct {
+		RedirectURIs            []string `json:"redirect_uris"`
+		TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method,omitempty"`
+		GrantTypes              []string `json:"grant_types,omitempty"`
+		ResponseTypes           []string `json:"response_types,omitempty"`
+		ClientName              string   `json:"client_name,omitempty"`
+		ClientURI               string   `json:"client_uri,omitempty"`
+		LogoURI                 string   `json:"logo_uri,omitempty"`
+		Scope                   string   `json:"scope,omitempty"`
+		Contacts                []string `json:"contacts,omitempty"`
+		ApplicationType         string   `json:"application_type,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+
+	// Validate required fields per RFC 7591 and OpenID specs
+	if len(req.RedirectURIs) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "invalid_client_metadata", "redirect_uris is required")
+		return
+	}
+
+	// Set defaults per specs
+	if req.TokenEndpointAuthMethod == "" {
+		req.TokenEndpointAuthMethod = "client_secret_basic"
+	}
+	if len(req.GrantTypes) == 0 {
+		req.GrantTypes = []string{"authorization_code"}
+	}
+	if len(req.ResponseTypes) == 0 {
+		req.ResponseTypes = []string{"code"}
+	}
+	if req.ApplicationType == "" {
+		req.ApplicationType = "web"
+	}
+
+	// Generate client credentials
+	clientID := rands.HexString(32)
+	clientSecret := rands.HexString(64)
+
+	// Create new client
+	newClient := FunnelClient{
+		ID:                      clientID,
+		Secret:                  clientSecret,
+		Name:                    req.ClientName,
+		RedirectURIs:            req.RedirectURIs,
+		TokenEndpointAuthMethod: req.TokenEndpointAuthMethod,
+		GrantTypes:              req.GrantTypes,
+		ResponseTypes:           req.ResponseTypes,
+		Scope:                   req.Scope,
+		ClientURI:               req.ClientURI,
+		LogoURI:                 req.LogoURI,
+		Contacts:                req.Contacts,
+		ApplicationType:         req.ApplicationType,
+		DynamicallyRegistered:   true,
+		CreatedAt:               time.Now(),
+	}
+
+	// Store the client
+	s.mu.Lock()
+	mak.Set(&s.funnelClients, clientID, &newClient)
+	if err := s.storeFunnelClientsLocked(); err != nil {
+		s.mu.Unlock()
+		log.Printf("tsidp: error storing client: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "server_error", "internal error")
+		return
+	}
+	s.mu.Unlock()
+
+	// Return the client registration response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(newClient)
 }
