@@ -799,6 +799,332 @@ func TestTokenExpiration(t *testing.T) {
 	}
 }
 
+// TestRefreshTokenWithResources tests refresh tokens with resource downscoping (RFC 8707)
+// Migrated from legacy/tsidp_test.go:1076-1187
+func TestRefreshTokenWithResources(t *testing.T) {
+	tests := []struct {
+		name              string
+		originalResources []string
+		refreshResources  []string
+		capMapRules       []stsCapRule
+		expectStatus      int
+		expectError       string
+	}{
+		{
+			name:              "refresh with resource downscoping",
+			originalResources: []string{"https://api1.example.com", "https://api2.example.com"},
+			refreshResources:  []string{"https://api1.example.com"},
+			capMapRules: []stsCapRule{
+				{
+					Users:     []string{"*"},
+					Resources: []string{"*"},
+				},
+			},
+			expectStatus: http.StatusOK,
+		},
+		{
+			name:              "refresh with resource not in original grant",
+			originalResources: []string{"https://api1.example.com"},
+			refreshResources:  []string{"https://api2.example.com"},
+			capMapRules: []stsCapRule{
+				{
+					Users:     []string{"*"},
+					Resources: []string{"*"},
+				},
+			},
+			expectStatus: http.StatusBadRequest,
+			expectError:  "requested resource not in original grant",
+		},
+		{
+			name:              "refresh without resource parameter",
+			originalResources: []string{"https://api1.example.com"},
+			refreshResources:  nil,
+			capMapRules: []stsCapRule{
+				{
+					Users:     []string{"*"},
+					Resources: []string{"*"},
+				},
+			},
+			expectStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New(nil, "", false, false, false)
+
+			// Create refresh token
+			rt := "test-refresh-token"
+			ar := &AuthRequest{
+				FunnelRP: &FunnelClient{
+					ID:     "test-client",
+					Secret: "test-secret",
+				},
+				ClientID:  "test-client",
+				Resources: tt.originalResources,
+				ValidTill: time.Now().Add(time.Hour),
+				RemoteUser: &apitype.WhoIsResponse{
+					Node: &tailcfg.Node{
+						ID:   1,
+						Name: "node1.example.ts.net",
+						User: tailcfg.UserID(1),
+						Key:  key.NodePublic{},
+					},
+					UserProfile: &tailcfg.UserProfile{
+						LoginName:   "user@example.com",
+						DisplayName: "Test User",
+					},
+					CapMap: tailcfg.PeerCapMap{
+						"test-tailscale.com/idp/sts/openly-allow": marshalCapRules(tt.capMapRules),
+					},
+				},
+			}
+			s.refreshToken[rt] = ar
+			s.funnelClients["test-client"] = ar.FunnelRP
+
+			// Create request
+			form := url.Values{
+				"grant_type":    {"refresh_token"},
+				"refresh_token": {rt},
+				"client_id":     {"test-client"},
+				"client_secret": {"test-secret"},
+			}
+			for _, res := range tt.refreshResources {
+				form.Add("resource", res)
+			}
+
+			req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			rr := httptest.NewRecorder()
+			s.serveToken(rr, req)
+
+			if rr.Code != tt.expectStatus {
+				t.Errorf("expected status %d, got %d: %s", tt.expectStatus, rr.Code, rr.Body.String())
+			}
+
+			if tt.expectError != "" && !strings.Contains(rr.Body.String(), tt.expectError) {
+				t.Errorf("expected error containing %q, got %q", tt.expectError, rr.Body.String())
+			}
+		})
+	}
+}
+
+// TestRefreshTokenScopePreservation tests scope preservation in refresh tokens  
+// Migrated from legacy/tsidp_test.go:1460-1541
+func TestRefreshTokenScopePreservation(t *testing.T) {
+	s := New(nil, "", false, false, false)
+
+	// Create refresh token with specific scopes
+	rt := "test-refresh-token-scopes"
+	originalScopes := []string{"openid", "profile"}
+	s.refreshToken[rt] = &AuthRequest{
+		FunnelRP: &FunnelClient{
+			ID:     "test-client",
+			Secret: "test-secret",
+		},
+		ClientID:  "test-client",
+		Scopes:    originalScopes,
+		ValidTill: time.Now().Add(time.Hour),
+		RemoteUser: &apitype.WhoIsResponse{
+			Node: &tailcfg.Node{
+				ID:   1,
+				Name: "node1.example.ts.net",
+				User: tailcfg.UserID(1),
+			},
+			UserProfile: &tailcfg.UserProfile{
+				LoginName:   "user@example.com",
+				DisplayName: "Test User",
+			},
+		},
+	}
+	s.funnelClients["test-client"] = &FunnelClient{
+		ID:     "test-client",
+		Secret: "test-secret",
+	}
+
+	// Issue new tokens using refresh token
+	form := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {rt},
+		"client_id":     {"test-client"},
+		"client_secret": {"test-secret"},
+	}
+
+	req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rr := httptest.NewRecorder()
+	s.serveToken(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Parse response to get new access token
+	var tokenResp oidcTokenResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &tokenResp); err != nil {
+		t.Fatalf("failed to unmarshal token response: %v", err)
+	}
+
+	// Verify the new access token has the same scopes
+	if newAR, ok := s.accessToken[tokenResp.AccessToken]; ok {
+		if len(newAR.Scopes) != len(originalScopes) {
+			t.Errorf("new access token has %d scopes, expected %d", len(newAR.Scopes), len(originalScopes))
+		}
+		for i, scope := range newAR.Scopes {
+			if i < len(originalScopes) && scope != originalScopes[i] {
+				t.Errorf("scope[%d] = %q, expected %q", i, scope, originalScopes[i])
+			}
+		}
+	} else {
+		t.Error("new access token not found in server state")
+	}
+
+	// Verify the new refresh token also has the same scopes
+	if newRT, ok := s.refreshToken[tokenResp.RefreshToken]; ok {
+		if len(newRT.Scopes) != len(originalScopes) {
+			t.Errorf("new refresh token has %d scopes, expected %d", len(newRT.Scopes), len(originalScopes))
+		}
+	} else {
+		t.Error("new refresh token not found in server state")
+	}
+}
+
+// TestAZPClaimWithMultipleAudiences tests azp claim handling with multiple audiences
+// Migrated from legacy/tsidp_test.go:1543-1679
+func TestAZPClaimWithMultipleAudiences(t *testing.T) {
+	tests := []struct {
+		name              string
+		resources         []string
+		expectAZP         bool
+		expectedAudiences int
+	}{
+		{
+			name:              "single audience - no azp",
+			resources:         []string{},
+			expectAZP:         false,
+			expectedAudiences: 1, // just client_id
+		},
+		{
+			name:              "multiple audiences - azp required",
+			resources:         []string{"https://api1.example.com", "https://api2.example.com"},
+			expectAZP:         true,
+			expectedAudiences: 3, // client_id + 2 resources
+		},
+		{
+			name:              "single resource - azp required",
+			resources:         []string{"https://api.example.com"},
+			expectAZP:         true,
+			expectedAudiences: 2, // client_id + 1 resource
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := New(nil, "", false, false, false)
+
+			// Set up funnel client
+			s.funnelClients["test-client"] = &FunnelClient{
+				ID:           "test-client",
+				Secret:       "test-secret",
+				RedirectURIs: []string{"https://example.com/callback"},
+			}
+
+			// Create auth request
+			code := "test-code"
+			ar := &AuthRequest{
+				FunnelRP:    s.funnelClients["test-client"],
+				ClientID:    "test-client",
+				RedirectURI: "https://example.com/callback",
+				Resources:   tt.resources,
+				Scopes:      []string{"openid"},
+				RemoteUser: &apitype.WhoIsResponse{
+					Node: &tailcfg.Node{
+						ID:   1,
+						Name: "node1.example.ts.net",
+						User: tailcfg.UserID(1),
+					},
+					UserProfile: &tailcfg.UserProfile{
+						LoginName: "user@example.com",
+					},
+				},
+				ValidTill: time.Now().Add(5 * time.Minute),
+			}
+			s.code[code] = ar
+
+			// Exchange code for token
+			form := url.Values{
+				"grant_type":    {"authorization_code"},
+				"code":          {code},
+				"redirect_uri":  {"https://example.com/callback"},
+				"client_id":     {"test-client"},
+				"client_secret": {"test-secret"},
+			}
+
+			req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			rr := httptest.NewRecorder()
+			s.serveToken(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+			}
+
+			var tokenResp oidcTokenResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &tokenResp); err != nil {
+				t.Fatalf("failed to unmarshal response: %v", err)
+			}
+
+			// Parse the ID token
+			token, err := jwt.ParseSigned(tokenResp.IDToken)
+			if err != nil {
+				t.Fatalf("failed to parse JWT: %v", err)
+			}
+
+			var claims map[string]interface{}
+			if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
+				t.Fatalf("failed to get claims: %v", err)
+			}
+
+			// Check audience
+			aud, ok := claims["aud"]
+			if !ok {
+				t.Fatal("aud claim not found")
+			}
+
+			// The JWT library always serializes audience as an array
+			audArray, isArray := aud.([]interface{})
+			if !isArray {
+				t.Errorf("expected audience to be array, got %T", aud)
+			}
+
+			if len(audArray) != tt.expectedAudiences {
+				t.Errorf("expected %d audiences, got %d", tt.expectedAudiences, len(audArray))
+			}
+
+			// Check azp claim
+			azp, hasAZP := claims["azp"]
+			if tt.expectAZP && !hasAZP {
+				t.Error("expected azp claim for multiple audiences, but not found")
+			}
+			if !tt.expectAZP && hasAZP {
+				t.Error("unexpected azp claim for single audience")
+			}
+			if hasAZP {
+				azpStr, ok := azp.(string)
+				if !ok {
+					t.Errorf("azp claim should be string, got %T", azp)
+				}
+				if azpStr != "test-client" {
+					t.Errorf("expected azp to be 'test-client', got %s", azpStr)
+				}
+			}
+		})
+	}
+}
+
 // marshalCapRules is a helper to convert stsCapRule slice to JSON for testing
 // Migrated from legacy/tsidp_test.go:2653-2661
 func marshalCapRules(rules []stsCapRule) []tailcfg.RawMessage {

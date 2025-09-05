@@ -22,9 +22,9 @@
 ✅ TestRefreshTokenFlow - Tests refresh token grant flow (migrated to server/token_test.go)
 ✅ TestTokenEndpointUnsupportedGrantType - Tests unsupported grant type handling (migrated to server/token_test.go)
 ✅ TestTokenExpiration - Tests token expiration handling (migrated to server/token_test.go)
-❌ TestRefreshTokenWithResources - Tests refresh tokens with resource downscoping (RFC 8707)
-❌ TestRefreshTokenScopePreservation - Tests scope preservation in refresh tokens
-❌ TestAZPClaimWithMultipleAudiences - Tests azp claim handling with multiple audiences
+✅ TestRefreshTokenWithResources - Tests refresh tokens with resource downscoping (RFC 8707) (migrated to server/token_test.go)
+✅ TestRefreshTokenScopePreservation - Tests scope preservation in refresh tokens (migrated to server/token_test.go)
+✅ TestAZPClaimWithMultipleAudiences - Tests azp claim handling with multiple audiences (migrated to server/token_test.go)
 
 ### Investigation Items
 🔍 **SECURITY**: Server implementation allows wrong client credentials in refresh token flow - Legacy rejects with 401/invalid_client, but server accepts with 200 OK. This may allow any client to use any refresh token, which violates OAuth 2.0 security requirements.
@@ -55,9 +55,9 @@
 
 ## Summary Statistics
 - Total tests in legacy: 22
-- Migrated: 19 (86%)
+- Migrated: 22 (100%)
 - Partially migrated: 0 (0%)
-- Not migrated: 3 (14%)
+- Not migrated: 0 (0%)
 
 ## Migration Priority (Recommended Order)
 
