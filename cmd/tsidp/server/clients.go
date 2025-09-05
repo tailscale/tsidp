@@ -5,8 +5,6 @@ package server
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"tailscale.com/util/rands"
 )
 
 // FunnelClient represents an OAuth/OIDC client configuration
@@ -377,16 +377,12 @@ func joinRedirectURIs(uris []string) string {
 
 // generateClientID generates a random client ID
 func generateClientID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return base64.URLEncoding.EncodeToString(b)
+	return rands.HexString(32)
 }
 
 // generateClientSecret generates a random client secret
 func generateClientSecret() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return base64.URLEncoding.EncodeToString(b)
+	return rands.HexString(64)
 }
 
 // validateRedirectURI validates that a redirect URI is allowed for a client
