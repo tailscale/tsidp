@@ -337,6 +337,7 @@ func TestPKCE(t *testing.T) {
 			ar := &AuthRequest{
 				ClientID:    authValues.Get("client_id"),
 				RedirectURI: authValues.Get("redirect_uri"),
+				FunnelRP:    s.funnelClients["test-client"], // Set funnel client for authentication
 				RemoteUser: &apitype.WhoIsResponse{
 					Node: &tailcfg.Node{
 						ID:   1,
@@ -429,6 +430,7 @@ func TestPKCEWithRefreshToken(t *testing.T) {
 	ar := &AuthRequest{
 		ClientID:            "test-client",
 		RedirectURI:         "https://example.com/callback",
+		FunnelRP:            s.funnelClients["test-client"], // Set funnel client for authentication
 		CodeChallenge:       "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
 		CodeChallengeMethod: "S256",
 		Scopes:              []string{"openid", "offline_access"},
