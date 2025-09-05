@@ -1,0 +1,133 @@
+# Migration Parity TODO List
+# Tasks needed to achieve full parity between legacy/ and the new app structure
+
+## Status Legend:
+# ✅ = Complete
+# ❌ = Not complete
+# 🔄 = Partially complete
+
+## Critical Missing Functionality (HIGH PRIORITY)
+
+### ServeOnLocalTailscaled Implementation
+❌ Implement ServeOnLocalTailscaled function (server/server.go:367-373)
+   - Location in legacy: legacy/tsidp.go:244-304
+   - Current state: Stub implementation returning empty function
+   - Required functionality:
+     * IPN bus watching for session management
+     * Serve config setup via LocalClient.GetServeConfig/SetServeConfig
+     * Foreground serve configuration with session ID
+     * Funnel configuration for local mode
+     * Proper cleanup handling on exit
+   - Impact: Local tailscaled mode (`-use-local-tailscaled` flag) completely broken
+
+### Store Package Integration
+❌ Integrate store package with server implementation
+   - Current: server/clients.go uses direct file operations
+   - Target: Use store/store.go functions for persistence
+   - Files to update:
+     * server/clients.go - Replace direct file ops with store calls
+     * server/server.go - Initialize and use store instance
+   - Remove duplicate code between server and store packages
+
+## Code Quality Issues (MEDIUM PRIORITY)
+
+### Remove Duplicate Code
+❌ Consolidate signingKey type definition
+   - Currently defined in both server/server.go and store/store.go
+   - Choose one location and import from there
+
+❌ Consolidate key marshaling/unmarshaling logic
+   - Duplicate MarshalJSON/UnmarshalJSON in server/server.go and store/store.go
+   - Move to single location (recommend store package)
+
+❌ Consolidate funnel client storage logic
+   - storeFunnelClientsLocked exists in server/clients.go
+   - SaveFunnelClients exists in store/store.go
+   - Use store package version consistently
+
+### Fix TODO/FIXME Items
+❌ Complete TODO in server/server.go:370
+   - "TODO: Implement this function by extracting from legacy/tsidp.go:244-304"
+   
+🔄 Address optimization TODOs in server/handlers.go
+   - "TODO(maisem): maybe only marshal this once and reuse?"
+   - "TODO(maisem): implement key rotation."
+   - Low priority optimization items
+
+## Architectural Consistency (MEDIUM PRIORITY)
+
+### Import Structure
+❌ Add store package imports where needed
+   - server/server.go needs to import store package
+   - server/clients.go needs to import store package
+
+❌ Verify no import cycles exist
+   - Review cross-package dependencies
+   - Ensure clean dependency hierarchy
+
+### Error Handling Consistency
+❌ Standardize error handling approach
+   - Legacy: Direct log.Fatal calls
+   - New: Mixed (some return errors, some fatal)
+   - Decision needed: Choose consistent pattern
+
+## Function Signature Alignment (LOW PRIORITY)
+
+### Exported vs Unexported Functions
+🔄 Review function visibility changes
+   - Legacy: camelCase (unexported)
+   - New: PascalCase (exported)
+   - Verify if external packages need these exports
+
+### Receiver Type Naming
+✅ Receiver type updated (idpServer → IDPServer)
+   - Already complete, no action needed
+
+## Testing Requirements
+
+### Integration Tests
+❌ Add integration test for local tailscaled mode
+   - Test ServeOnLocalTailscaled function
+   - Test IPN bus watching
+   - Test session cleanup
+
+❌ Add integration test for tsnet mode
+   - Verify tsnet.Server initialization
+   - Test funnel access
+
+### Manual Testing Checklist
+❌ Test local tailscaled mode with -use-local-tailscaled flag
+❌ Test funnel mode with -funnel flag
+❌ Test session cleanup on exit
+❌ Test client persistence across restarts
+❌ Verify error handling in failure scenarios
+
+## Migration Order (Recommended)
+
+### Phase 1: Critical Functionality (MUST DO)
+1. ❌ Implement ServeOnLocalTailscaled function
+2. ❌ Test local tailscaled mode manually
+3. ❌ Add integration tests for local mode
+
+### Phase 2: Architecture Cleanup (SHOULD DO)
+4. ❌ Integrate store package with server
+5. ❌ Remove duplicate signingKey code
+6. ❌ Consolidate funnel client storage
+7. ❌ Standardize error handling
+
+### Phase 3: Polish (NICE TO HAVE)
+8. ❌ Address optimization TODOs
+9. ❌ Review and align function signatures
+10. ❌ Add comprehensive integration test suite
+
+## Summary Statistics
+- Total tasks: 24
+- Complete: 2 (8%)
+- Partial: 2 (8%)
+- Not complete: 20 (84%)
+
+## Notes
+- Priority should be on ServeOnLocalTailscaled implementation as it's a complete feature regression
+- Store package integration will improve maintainability and reduce duplication
+- All tests currently pass but don't cover the missing functionality
+- Consider creating a separate integration test package for end-to-end testing
