@@ -42,7 +42,7 @@
 ✅ TestScopeHandling - Tests OAuth scope handling (migrated to server/authorize_test.go)
 
 ### Cleanup Tests
-🔄 TestCleanupExpiredTokens - Tests expired token cleanup (basic version exists in server/server_test.go)
+✅ TestCleanupExpiredTokens - Tests expired token cleanup (enhanced version in server/server_test.go covers both legacy tests)
 
 ## Tests from legacy/ui_test.go (2 tests total)
 
@@ -52,8 +52,8 @@
 
 ## Summary Statistics
 - Total tests in legacy: 22
-- Migrated: 15 (68%)
-- Partially migrated: 1 (5%)
+- Migrated: 16 (73%)
+- Partially migrated: 0 (0%)
 - Not migrated: 6 (27%)
 
 ## Migration Priority (Recommended Order)

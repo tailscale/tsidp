@@ -110,8 +110,9 @@ func TestSetFunnelClients(t *testing.T) {
 	}
 }
 
-// TestCleanupExpiredTokens tests token cleanup
-// Migrated from legacy/tsidp_test.go:833-867
+// TestCleanupExpiredTokens tests token cleanup  
+// Enhanced migration combining legacy/tsidp_test.go:833-867 and legacy/tsidp_test.go:2310-2331
+// Tests cleanup of authorization codes, access tokens, and refresh tokens
 func TestCleanupExpiredTokens(t *testing.T) {
 	srv := New(nil, "", false, false, false)
 
@@ -147,10 +148,22 @@ func TestCleanupExpiredTokens(t *testing.T) {
 		ValidTill: now.Add(-1 * time.Hour),
 	}
 
+	// Add another expired refresh token for more coverage
+	srv.refreshToken["expired-refresh-2"] = &AuthRequest{
+		ClientID:  "test-client",
+		ValidTill: now.Add(-24 * time.Hour),
+	}
+
 	// Add valid refresh token (no expiry)
 	srv.refreshToken["valid-refresh"] = &AuthRequest{
 		ClientID: "test-client",
 		// No ValidTill set means no expiry
+	}
+
+	// Add valid refresh token with explicit expiry
+	srv.refreshToken["valid-refresh-2"] = &AuthRequest{
+		ClientID:  "test-client",
+		ValidTill: now.Add(24 * time.Hour),
 	}
 
 	// Run cleanup
@@ -180,8 +193,27 @@ func TestCleanupExpiredTokens(t *testing.T) {
 		t.Error("Expired refresh token was not removed")
 	}
 
+	if _, exists := srv.refreshToken["expired-refresh-2"]; exists {
+		t.Error("Second expired refresh token was not removed")
+	}
+
 	if _, exists := srv.refreshToken["valid-refresh"]; !exists {
 		t.Error("Valid refresh token was incorrectly removed")
+	}
+
+	if _, exists := srv.refreshToken["valid-refresh-2"]; !exists {
+		t.Error("Second valid refresh token was incorrectly removed")
+	}
+
+	// Verify final counts match expectations
+	if len(srv.code) != 1 {
+		t.Errorf("Expected 1 valid authorization code, got %d", len(srv.code))
+	}
+	if len(srv.accessToken) != 1 {
+		t.Errorf("Expected 1 valid access token, got %d", len(srv.accessToken))
+	}
+	if len(srv.refreshToken) != 2 {
+		t.Errorf("Expected 2 valid refresh tokens, got %d", len(srv.refreshToken))
 	}
 }
 
