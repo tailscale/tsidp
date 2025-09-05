@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"gopkg.in/square/go-jose.v2/jwt"
+	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -932,10 +933,40 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowRelyingParty checks if the relying party is allowed to access the token
-// This method needs to be added to AuthRequest
-func (ar *AuthRequest) allowRelyingParty(r *http.Request, lc interface{}) error {
-	// TODO: Implement relying party validation
-	// This would need to check LocalRP, RPNodeID, and FunnelRP fields
-	// and validate against the request context
+// Migrated from legacy/tsidp.go:520-552
+func (ar *AuthRequest) allowRelyingParty(r *http.Request, lc *local.Client) error {
+	if ar.LocalRP {
+		ra, err := netip.ParseAddrPort(r.RemoteAddr)
+		if err != nil {
+			return err
+		}
+		if !ra.Addr().IsLoopback() {
+			return fmt.Errorf("tsidp: request from non-loopback address")
+		}
+		return nil
+	}
+	if ar.FunnelRP != nil {
+		clientID, clientSecret, ok := r.BasicAuth()
+		if !ok {
+			clientID = r.FormValue("client_id")
+			clientSecret = r.FormValue("client_secret")
+		}
+		clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(ar.FunnelRP.ID))
+		clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
+		if clientIDcmp != 1 || clientSecretcmp != 1 {
+			return fmt.Errorf("tsidp: invalid client credentials")
+		}
+		return nil
+	}
+	if lc == nil {
+		return fmt.Errorf("tsidp: no local client available for node validation")
+	}
+	who, err := lc.WhoIs(r.Context(), r.RemoteAddr)
+	if err != nil {
+		return fmt.Errorf("tsidp: error getting WhoIs: %w", err)
+	}
+	if ar.RPNodeID != who.Node.ID {
+		return fmt.Errorf("tsidp: token for different node")
+	}
 	return nil
 }

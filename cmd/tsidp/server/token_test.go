@@ -550,25 +550,25 @@ func TestRefreshTokenFlow(t *testing.T) {
 				}
 			},
 		},
-		// TODO: This test case reveals that the server implementation may not validate
+		// This test case validates that the server implementation properly validates
 		// client credentials in refresh token flow the same way as legacy implementation.
-		// Legacy rejects with 401/invalid_client, but server currently allows it.
-		// This should be investigated as a potential security issue.
+		// Both legacy and server should reject with 401/invalid_client.
+		// SECURITY FIX: Previously server incorrectly allowed this, now it properly rejects.
 		{
-			name:         "wrong client credentials - server behavior differs from legacy",
+			name:         "wrong client credentials - now properly rejected",
 			grantType:    "refresh_token",
 			refreshToken: "valid-refresh-token",
 			clientID:     "wrong-client",
 			clientSecret: "wrong-secret",
-			expectStatus: http.StatusOK, // Server currently allows this (may need fixing)
+			expectStatus: http.StatusUnauthorized, // Both legacy and server should reject this
 			checkResponse: func(t *testing.T, body []byte) {
-				var resp oidcTokenResponse
+				var resp oauthErrorResponse
 				if err := json.Unmarshal(body, &resp); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
-				// Server currently issues token successfully (legacy would reject)
-				if resp.AccessToken == "" {
-					t.Error("expected access token")
+				// Both legacy and server should reject with invalid_client error
+				if resp.Error != "invalid_client" {
+					t.Errorf("expected error 'invalid_client', got: %v", resp.Error)
 				}
 			},
 		},

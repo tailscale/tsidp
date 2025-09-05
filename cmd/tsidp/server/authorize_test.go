@@ -77,6 +77,7 @@ func TestScopeHandling(t *testing.T) {
 			ar := &AuthRequest{
 				ClientID:    authValues.Get("client_id"),
 				RedirectURI: authValues.Get("redirect_uri"),
+				FunnelRP:    s.funnelClients["test-client"], // Set funnel client for authentication
 				RemoteUser: &apitype.WhoIsResponse{
 					Node: &tailcfg.Node{
 						ID:   1,

@@ -27,7 +27,20 @@
 ✅ TestAZPClaimWithMultipleAudiences - Tests azp claim handling with multiple audiences (migrated to server/token_test.go)
 
 ### Investigation Items
-🔍 **SECURITY**: Server implementation allows wrong client credentials in refresh token flow - Legacy rejects with 401/invalid_client, but server accepts with 200 OK. This may allow any client to use any refresh token, which violates OAuth 2.0 security requirements.
+✅ **SECURITY FIXED**: Server implementation now properly validates client credentials in refresh token flow - Both legacy and server correctly reject with 401/invalid_client. 
+
+**Root Cause**: The `allowRelyingParty` method in `server/token.go:936-941` was a stub that always returned `nil`, allowing any client to use any refresh token.
+
+**Fix Applied**: 
+- Implemented proper `allowRelyingParty` method with client credential validation (server/token.go:936-972)
+- Added funnel client credential validation using constant-time comparison
+- Added local client loopback address validation  
+- Added node client identity validation via WhoIs
+- Added nil local client checks with proper error handling
+- Fixed test in `server/authorize_test.go:80` to properly set FunnelRP for funnel clients
+- Updated security test in `server/token_test.go:553-572` to expect correct 401/invalid_client behavior
+
+**Security Impact**: OAuth 2.0 refresh token security now properly enforced - only the original client can use its refresh tokens.
 
 ### Token Introspection Tests
 ✅ TestIntrospectTokenExpiration - Tests introspection of expired tokens (migrated to server/token_test.go)
