@@ -64,16 +64,16 @@ func (s *IDPServer) LoadFunnelClients() error {
 		return err
 	}
 	defer f.Close()
-	
+
 	var clients map[string]*FunnelClient
 	if err := json.NewDecoder(f).Decode(&clients); err != nil {
 		return err
 	}
-	
+
 	s.mu.Lock()
 	s.funnelClients = clients
 	s.mu.Unlock()
-	
+
 	return nil
 }
 
@@ -85,7 +85,7 @@ func (s *IDPServer) storeFunnelClientsLocked() error {
 	if err := json.NewEncoder(&buf).Encode(s.funnelClients); err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(s.getFunnelClientsPath(), buf.Bytes(), 0600)
 }
 
@@ -247,6 +247,15 @@ func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *htt
 	// Block funnel requests - dynamic registration is only available over tailnet
 	if isFunnelRequest(r) {
 		writeJSONError(w, http.StatusForbidden, "access_denied", "dynamic client registration not available over funnel")
+		return
+	}
+	h := w.Header()
+	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Allow-Method", "POST, OPTIONS")
+	h.Set("Access-Control-Allow-Headers", "*")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

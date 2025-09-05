@@ -95,7 +95,7 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 
 	// early return for pre-flight OPTIONS requests.
 	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if r.URL.Path != "/.well-known/openid-configuration" {
@@ -173,7 +173,7 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 
 	// early return for pre-flight OPTIONS requests.
 	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if r.URL.Path != "/.well-known/oauth-authorization-server" {
@@ -248,6 +248,18 @@ func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "not_found", "endpoint not found")
 		return
 	}
+
+	h := w.Header()
+	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
+	h.Set("Access-Control-Allow-Headers", "*")
+
+	// early return for pre-flight OPTIONS requests.
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	sk, err := s.oidcPrivateKey()
 	if err != nil {
@@ -312,4 +324,3 @@ type oauthErrorResponse struct {
 	ErrorDescription string `json:"error_description,omitempty"`
 	ErrorURI         string `json:"error_uri,omitempty"`
 }
-
