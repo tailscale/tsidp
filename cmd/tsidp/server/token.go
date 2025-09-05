@@ -54,10 +54,10 @@ type tailscaleClaims struct {
 
 	// PreferredUsername is the local part of Email (without '@' and domain).
 	PreferredUsername string `json:"preferred_username,omitempty"`
-	
+
 	// Picture is the user's profile picture URL
 	Picture string `json:"picture,omitempty"`
-	
+
 	// AuthorizedParty is the azp claim for multi-audience scenarios
 	AuthorizedParty string `json:"azp,omitempty"`
 }
@@ -78,6 +78,16 @@ type stsCapRule struct {
 // serveToken is the main /token endpoint handler
 // Migrated from legacy/tsidp.go:921-942
 func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
+	h := w.Header()
+	h.Set("Access-Control-Allow-Origin", "*")
+	h.Set("Access-Control-Allow-Method", "POST, OPTIONS")
+	h.Set("Access-Control-Allow-Headers", "*")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	if r.Method != "POST" {
 		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -734,16 +744,16 @@ func withExtraClaims(claims tailscaleClaims, rules []capRule) (map[string]interf
 func flattenExtraClaims(rules []capRule) map[string]any {
 	// sets stores deduplicated stringified values for each claim key.
 	sets := make(map[string]map[string]struct{})
-	
+
 	// Track whether each claim was originally a slice or scalar
 	wasSlice := make(map[string]bool)
-	
+
 	for _, rule := range rules {
 		for k, v := range rule.ExtraClaims {
 			if sets[k] == nil {
 				sets[k] = make(map[string]struct{})
 			}
-			
+
 			// Handle both slice and scalar values
 			switch vv := v.(type) {
 			case []any:
@@ -770,7 +780,7 @@ func flattenExtraClaims(rules []capRule) map[string]any {
 			}
 		}
 	}
-	
+
 	// Build the final result
 	result := make(map[string]any)
 	for k, stringSet := range sets {
@@ -797,7 +807,7 @@ func flattenExtraClaims(rules []capRule) map[string]any {
 			}
 		}
 	}
-	
+
 	return result
 }
 
