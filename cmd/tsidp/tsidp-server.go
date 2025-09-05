@@ -136,7 +136,7 @@ func main() {
 		*flagUseLocalTailscaled,
 		*flagEnableSTS,
 	)
-	
+
 	if *flagPort != 443 {
 		srv.SetServerURL(fmt.Sprintf("https://%s:%d", strings.TrimSuffix(st.Self.DNSName, "."), *flagPort))
 	} else {
@@ -185,7 +185,9 @@ func main() {
 
 	for _, ln := range lns {
 		httpServer := http.Server{
-			Handler: srv,
+
+			// TODO: THIS IS ONLY FOR DEBUGGING
+			Handler: wrapWithDebugLogging(srv),
 			ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 				return context.WithValue(ctx, server.CtxConn{}, c)
 			},
@@ -207,4 +209,28 @@ func main() {
 		log.Fatalf("watcher error: %v", err)
 		return
 	}
+}
+
+// wrapWithDebugLogging returns a new http.Handler that logs request method and path
+func wrapWithDebugLogging(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Create a wrapper to capture the status code
+		wrapper := &responseWrapper{ResponseWriter: w, statusCode: 200} // default to 200
+
+		handler.ServeHTTP(wrapper, r)
+
+		// Now you can output the request method, path and the response status code
+		log.Printf("%s %s - %d", r.Method, r.URL.Path, wrapper.statusCode)
+	})
+}
+
+// responseWrapper wraps http.ResponseWriter to capture the status code
+type responseWrapper struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWrapper) WriteHeader(statusCode int) {
+	rw.statusCode = statusCode
+	rw.ResponseWriter.WriteHeader(statusCode)
 }

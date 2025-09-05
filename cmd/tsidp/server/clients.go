@@ -19,9 +19,9 @@ import (
 // FunnelClient represents an OAuth/OIDC client configuration
 // Migrated from legacy/tsidp.go:2006-2024
 type FunnelClient struct {
-	ID                      string    `json:"id"`
-	Secret                  string    `json:"secret"`
-	Name                    string    `json:"name"`
+	ID                      string    `json:"client_id"`
+	Secret                  string    `json:"client_secret,omitempty"`
+	Name                    string    `json:"client_name,omitempty"`
 	RedirectURIs            []string  `json:"redirect_uris"`
 	TokenEndpointAuthMethod string    `json:"token_endpoint_auth_method,omitempty"`
 	GrantTypes              []string  `json:"grant_types,omitempty"`
@@ -33,7 +33,6 @@ type FunnelClient struct {
 	ApplicationType         string    `json:"application_type,omitempty"`
 	DynamicallyRegistered   bool      `json:"dynamically_registered,omitempty"`
 	CreatedAt               time.Time `json:"created_at"`
-	LastUsed                time.Time `json:"last_used,omitempty"`
 }
 
 const funnelClientsFile = "oidc-funnel-clients.json"
@@ -192,7 +191,6 @@ func (s *IDPServer) serveGetClientsList(w http.ResponseWriter, r *http.Request) 
 			Secret:       "", // Don't return secrets
 			RedirectURIs: c.RedirectURIs,
 			CreatedAt:    c.CreatedAt,
-			LastUsed:     c.LastUsed,
 		})
 	}
 

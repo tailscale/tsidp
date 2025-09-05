@@ -121,6 +121,49 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 		checkResponse func(t *testing.T, body []byte)
 	}{
 		{
+			name:   "POST request - verify JSON field names",
+			method: "POST",
+			body: `{
+				"redirect_uris": ["https://example.com/callback"],
+				"client_name": "Test Client",
+				"grant_types": ["authorization_code"],
+				"response_types": ["code"]
+			}`,
+			expectStatus: http.StatusCreated,
+			checkResponse: func(t *testing.T, body []byte) {
+				// Parse as raw JSON to verify exact field names
+				var rawResp map[string]interface{}
+				if err := json.Unmarshal(body, &rawResp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+
+				// Check that the correct field names are present
+				if _, ok := rawResp["client_id"]; !ok {
+					t.Error("expected 'client_id' field in response, not found")
+				}
+				if _, ok := rawResp["client_secret"]; !ok {
+					t.Error("expected 'client_secret' field in response, not found")
+				}
+				if _, ok := rawResp["client_name"]; !ok {
+					t.Error("expected 'client_name' field in response, not found")
+				}
+				if _, ok := rawResp["redirect_uris"]; !ok {
+					t.Error("expected 'redirect_uris' field in response, not found")
+				}
+
+				// Verify values
+				if clientId, ok := rawResp["client_id"].(string); !ok || clientId == "" {
+					t.Error("client_id should be a non-empty string")
+				}
+				if clientSecret, ok := rawResp["client_secret"].(string); !ok || clientSecret == "" {
+					t.Error("client_secret should be a non-empty string")
+				}
+				if clientName, ok := rawResp["client_name"].(string); !ok || clientName != "Test Client" {
+					t.Errorf("expected client_name to be 'Test Client', got %v", rawResp["client_name"])
+				}
+			},
+		},
+		{
 			name:   "POST request - valid registration",
 			method: "POST",
 			body: `{
