@@ -18,9 +18,9 @@ store/ - data persistence logic
 - tests should be migrated with functionality into appropriate packages
 - leave files in legacy/ alone
 - add comments in new source files to location in legacy/ code it was migrated from
+- it is ok to create new files like server/authorize.go for /authorize to keep server/handlers.go easier to understand.
 
 ## Testing
 
 - run tests after changes
-- to run tests: go test -v ./...
-- it is ok to create new files like server/authorize.go for /authorize to keep server/handlers.go easier to understand.
+- use `make test` to run tests
