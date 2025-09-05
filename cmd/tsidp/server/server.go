@@ -15,18 +15,23 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/lazy"
+	"tailscale.com/util/mak"
 )
 
 // CtxConn is a key to look up a net.Conn stored in an HTTP request's context.
@@ -367,9 +372,65 @@ func (sk *signingKey) UnmarshalJSON(b []byte) error {
 // ServeOnLocalTailscaled starts a serve session using an already-running tailscaled
 // Migrated from legacy/tsidp.go:244-304
 func ServeOnLocalTailscaled(ctx context.Context, lc *local.Client, st *ipnstate.Status, dstPort uint16, shouldFunnel bool) (cleanup func(), watcherChan chan error, err error) {
-	// TODO: Implement this function by extracting from legacy/tsidp.go:244-304
-	// This function handles serving on local tailscaled
-	return func() {}, make(chan error), nil
+	// In order to support funneling out in local tailscaled mode, we need
+	// to add a serve config to forward the listeners we bound above and
+	// allow those forwarders to be funneled out.
+	sc, err := lc.GetServeConfig(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not get serve config: %v", err)
+	}
+	if sc == nil {
+		sc = new(ipn.ServeConfig)
+	}
+
+	// We watch the IPN bus just to get a session ID. The session expires
+	// when we stop watching the bus, and that auto-deletes the foreground
+	// serve/funnel configs we are creating below.
+	watcher, err := lc.WatchIPNBus(ctx, ipn.NotifyInitialState|ipn.NotifyNoPrivateKeys)
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not set up ipn bus watcher: %v", err)
+	}
+	defer func() {
+		if err != nil {
+			watcher.Close()
+		}
+	}()
+	n, err := watcher.Next()
+	if err != nil {
+		return nil, nil, fmt.Errorf("could not get initial state from ipn bus watcher: %v", err)
+	}
+	if n.SessionID == "" {
+		err = fmt.Errorf("missing sessionID in ipn.Notify")
+		return nil, nil, err
+	}
+	watcherChan = make(chan error)
+	go func() {
+		for {
+			_, err = watcher.Next()
+			if err != nil {
+				watcherChan <- err
+				return
+			}
+		}
+	}()
+
+	// Create a foreground serve config that gets cleaned up when tsidp
+	// exits and the session ID associated with this config is invalidated.
+	foregroundSc := new(ipn.ServeConfig)
+	mak.Set(&sc.Foreground, n.SessionID, foregroundSc)
+	serverURL := strings.TrimSuffix(st.Self.DNSName, ".")
+	fmt.Printf("setting funnel for %s:%v\n", serverURL, dstPort)
+
+	foregroundSc.SetFunnel(serverURL, dstPort, shouldFunnel)
+	foregroundSc.SetWebHandler(&ipn.HTTPHandler{
+		Proxy: fmt.Sprintf("https://%s", net.JoinHostPort(serverURL, strconv.Itoa(int(dstPort)))),
+	}, serverURL, dstPort, "/", true, st.CurrentTailnet.MagicDNSSuffix)
+	err = lc.SetServeConfig(ctx, sc)
+	if err != nil {
+		return nil, watcherChan, fmt.Errorf("could not set serve config: %v", err)
+	}
+
+	return func() { watcher.Close() }, watcherChan, nil
 }
 
 // getFunnelClientsPath returns the full path to the funnel clients file

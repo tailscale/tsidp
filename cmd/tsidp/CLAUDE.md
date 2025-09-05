@@ -22,6 +22,10 @@ oauth/ - OAuth functionality
 - only start working on a task when the user has explicitly given instructions to start
 - when the user asks questions about a task in TODO, use the code as a reference and provide succinct answers
 
+## Other
+
+- do not try commands found in .bash_aliases. Use standard CLI commands instead.
+
 ## Testing
 
 - use `make test` to run tests
