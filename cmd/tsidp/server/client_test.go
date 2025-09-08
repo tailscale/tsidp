@@ -74,7 +74,7 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var client FunnelClient
-			
+
 			// Since FunnelClient doesn't have custom UnmarshalJSON in the new structure,
 			// we need to handle backward compatibility differently.
 			// For now, we'll test the expected format directly.
@@ -87,7 +87,7 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 			client.ID = rawData["id"].(string)
 			client.Secret = rawData["secret"].(string)
 			client.Name = rawData["name"].(string)
-			
+
 			// Handle redirect URIs
 			if uris, ok := rawData["redirect_uris"].([]interface{}); ok {
 				client.RedirectURIs = make([]string, len(uris))
@@ -144,8 +144,8 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 				if _, ok := rawResp["client_secret"]; !ok {
 					t.Error("expected 'client_secret' field in response, not found")
 				}
-				if _, ok := rawResp["client_name"]; !ok {
-					t.Error("expected 'client_name' field in response, not found")
+				if _, ok := rawResp["name"]; !ok {
+					t.Error("expected 'name' field in response, not found")
 				}
 				if _, ok := rawResp["redirect_uris"]; !ok {
 					t.Error("expected 'redirect_uris' field in response, not found")
@@ -158,8 +158,8 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 				if clientSecret, ok := rawResp["client_secret"].(string); !ok || clientSecret == "" {
 					t.Error("client_secret should be a non-empty string")
 				}
-				if clientName, ok := rawResp["client_name"].(string); !ok || clientName != "Test Client" {
-					t.Errorf("expected client_name to be 'Test Client', got %v", rawResp["client_name"])
+				if clientName, ok := rawResp["name"].(string); !ok || clientName != "Test Client" {
+					t.Errorf("expected name to be 'Test Client', got %v", rawResp["name"])
 				}
 			},
 		},
@@ -342,7 +342,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a temp directory for state storage
 			tempDir := t.TempDir()
-			
+
 			s := &IDPServer{
 				serverURL:     "https://idp.test.ts.net",
 				stateDir:      tempDir,
@@ -452,7 +452,7 @@ func TestSplitRedirectURIs(t *testing.T) {
 		if input == "" {
 			return nil
 		}
-		
+
 		lines := strings.Split(input, "\n")
 		var result []string
 		for _, line := range lines {
@@ -557,7 +557,7 @@ func TestJoinRedirectURIs(t *testing.T) {
 // TestClientPersistence tests that clients are properly persisted to disk
 func TestClientPersistence(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
 		stateDir:      tempDir,
@@ -621,7 +621,7 @@ func TestClientPersistence(t *testing.T) {
 // TestDeleteClient tests client deletion functionality
 func TestDeleteClient(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
 		stateDir:      tempDir,
@@ -635,7 +635,7 @@ func TestDeleteClient(t *testing.T) {
 		Name:         "Test Client 1",
 		RedirectURIs: []string{"https://example.com/callback"},
 	}
-	
+
 	client2 := &FunnelClient{
 		ID:           "test-client-2",
 		Secret:       "test-secret-2",
@@ -662,11 +662,11 @@ func TestDeleteClient(t *testing.T) {
 	// Verify client1 was deleted but client2 remains
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.funnelClients["test-client-1"]; exists {
 		t.Error("client1 should have been deleted")
 	}
-	
+
 	if _, exists := s.funnelClients["test-client-2"]; !exists {
 		t.Error("client2 should still exist")
 	}
@@ -685,7 +685,7 @@ func TestGetClientsList(t *testing.T) {
 		Name:         "Test Client 1",
 		RedirectURIs: []string{"https://example.com/callback1"},
 	}
-	
+
 	client2 := &FunnelClient{
 		ID:           "test-client-2",
 		Name:         "Test Client 2",
@@ -740,7 +740,7 @@ func TestGetClientsList(t *testing.T) {
 // TestServeNewClient tests the new client creation endpoint
 func TestServeNewClient(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
 		stateDir:      tempDir,
@@ -781,7 +781,7 @@ func TestServeNewClient(t *testing.T) {
 	// Verify client was added to the server's client list
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if _, exists := s.funnelClients[newClient.ID]; !exists {
 		t.Error("new client was not added to server's client list")
 	}
