@@ -22,7 +22,7 @@ import (
 type FunnelClient struct {
 	ID                      string    `json:"client_id"`
 	Secret                  string    `json:"client_secret,omitempty"`
-	Name                    string    `json:"client_name,omitempty"`
+	Name                    string    `json:"name,omitempty"`
 	RedirectURIs            []string  `json:"redirect_uris"`
 	TokenEndpointAuthMethod string    `json:"token_endpoint_auth_method,omitempty"`
 	GrantTypes              []string  `json:"grant_types,omitempty"`
@@ -103,6 +103,14 @@ func (s *IDPServer) LoadFunnelClients() error {
 // Migrated from legacy/tsidp.go:2270-2276
 func (s *IDPServer) storeFunnelClientsLocked() error {
 	var buf bytes.Buffer
+
+	// backwards compat. add a redirect_uri field so clients are compatible with older tsidp versions
+	for _, c := range s.funnelClients {
+		if c.RedirectURI == "" && len(c.RedirectURIs) > 0 {
+			c.RedirectURI = c.RedirectURIs[0] // Use the first redirect URI for backwards compatibility
+		}
+	}
+
 	if err := json.NewEncoder(&buf).Encode(s.funnelClients); err != nil {
 		return err
 	}
