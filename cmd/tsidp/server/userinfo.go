@@ -90,7 +90,7 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	userInfoMap, err := withExtraClaimsGeneric(ui, filtered)
+	userInfoMap, err := withExtraClaims(ui, filtered)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -114,43 +114,6 @@ func writeBearerError(w http.ResponseWriter, statusCode int, errorCode, errorDes
 	}
 	w.Header().Set("WWW-Authenticate", authHeader)
 	w.WriteHeader(statusCode)
-}
-
-// withExtraClaimsGeneric merges flattened extra claims from a list of capRule into the provided struct v,
-// returning a map[string]any that combines both sources.
-// This is a more generic version that works with any struct type.
-// Migrated from legacy/tsidp.go:888-919
-func withExtraClaimsGeneric(v any, rules []capRule) (map[string]any, error) {
-	// Marshal the static struct
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal into a generic map
-	var claimMap map[string]any
-	if err := json.Unmarshal(data, &claimMap); err != nil {
-		return nil, err
-	}
-
-	// Convert views.Slice to a map[string]struct{} for efficient lookup
-	protected := make(map[string]struct{}, len(openIDSupportedClaims.AsSlice()))
-	for _, claim := range openIDSupportedClaims.AsSlice() {
-		protected[claim] = struct{}{}
-	}
-
-	// Merge extra claims
-	extra := flattenExtraClaims(rules)
-	for k, v := range extra {
-		if _, isProtected := protected[k]; isProtected {
-			log.Printf("Skip overwriting of existing claim %q", k)
-			return nil, fmt.Errorf("extra claim %q overwriting existing claim", k)
-		}
-
-		claimMap[k] = v
-	}
-
-	return claimMap, nil
 }
 
 // addClaimValue adds a claim value to the deduplication set for a given claim key.

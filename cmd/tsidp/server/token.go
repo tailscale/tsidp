@@ -733,10 +733,49 @@ func writeTokenEndpointError(w http.ResponseWriter, statusCode int, errorCode, e
 	})
 }
 
-// withExtraClaims merges extra claims from capability rules for tailscaleClaims
-// This wraps the generic version to work specifically with tailscaleClaims
-func withExtraClaims(claims tailscaleClaims, rules []capRule) (map[string]interface{}, error) {
-	return withExtraClaimsGeneric(claims, rules)
+// withExtraClaims merges flattened extra claims from a list of capRule into the provided struct v,
+// returning a map[string]any that combines both sources.
+//
+// v is any struct whose fields represent static claims; it is first marshaled to JSON, then unmarshalled into a generic map.
+// rules is a slice of capRule objects that may define additional (extra) claims to merge.
+//
+// These extra claims are flattened and merged into the base map unless they conflict with protected claims.
+// Claims defined in openIDSupportedClaims are considered protected and cannot be overwritten.
+// If an extra claim attempts to overwrite a protected claim, an error is returned.
+//
+// Returns the merged claims map or an error if any protected claim is violated or JSON (un)marshaling fails.
+// Migrated from legacy/tsidp.go:877-919
+func withExtraClaims(v any, rules []capRule) (map[string]any, error) {
+	// Marshal the static struct
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal into a generic map
+	var claimMap map[string]any
+	if err := json.Unmarshal(data, &claimMap); err != nil {
+		return nil, err
+	}
+
+	// Convert views.Slice to a map[string]struct{} for efficient lookup
+	protected := make(map[string]struct{}, len(openIDSupportedClaims.AsSlice()))
+	for _, claim := range openIDSupportedClaims.AsSlice() {
+		protected[claim] = struct{}{}
+	}
+
+	// Merge extra claims
+	extra := flattenExtraClaims(rules)
+	for k, v := range extra {
+		if _, isProtected := protected[k]; isProtected {
+			log.Printf("Skip overwriting of existing claim %q", k)
+			return nil, fmt.Errorf("extra claim %q overwriting existing claim", k)
+		}
+
+		claimMap[k] = v
+	}
+
+	return claimMap, nil
 }
 
 // flattenExtraClaims merges all ExtraClaims from a slice of capRule into a single map
