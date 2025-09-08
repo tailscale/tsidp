@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,6 +34,9 @@ type FunnelClient struct {
 	ApplicationType         string    `json:"application_type,omitempty"`
 	DynamicallyRegistered   bool      `json:"dynamically_registered,omitempty"`
 	CreatedAt               time.Time `json:"created_at"`
+
+	// backwards compatibility for old clients that used a single string
+	RedirectURI string `json:"redirect_uri"`
 }
 
 const funnelClientsFile = "oidc-funnel-clients.json"
@@ -54,6 +58,9 @@ func (s *IDPServer) getFunnelClientsPath() string {
 
 // LoadFunnelClients loads funnel clients from disk
 func (s *IDPServer) LoadFunnelClients() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	f, err := os.Open(s.getFunnelClientsPath())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -69,9 +76,24 @@ func (s *IDPServer) LoadFunnelClients() error {
 		return err
 	}
 
-	s.mu.Lock()
 	s.funnelClients = clients
-	s.mu.Unlock()
+
+	// migrate old configurations that used a single redirect_uri field
+	migrationPerformed := false
+	for _, c := range s.funnelClients {
+
+		// only perform migration if there's a redirect_uri and no redirect_uris yet
+		if c.RedirectURI != "" && len(c.RedirectURIs) == 0 {
+			c.RedirectURIs = append(c.RedirectURIs, c.RedirectURI)
+			migrationPerformed = true
+		}
+	}
+	if migrationPerformed {
+		log.Println("Migrated old funnel clients with single redirect_uri to redirect_uris field.")
+		if err := s.storeFunnelClientsLocked(); err != nil {
+			return fmt.Errorf("failed to store migrated clients: %w", err)
+		}
+	}
 
 	return nil
 }
