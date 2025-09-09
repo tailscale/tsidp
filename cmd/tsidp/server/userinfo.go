@@ -17,11 +17,11 @@ import (
 // userInfo represents the OpenID Connect UserInfo response
 // Migrated from legacy/tsidp.go:771-777
 type userInfo struct {
-	Sub               string `json:"sub"`
-	Name              string `json:"name,omitempty"`
-	Email             string `json:"email,omitempty"`
-	Picture           string `json:"picture,omitempty"`
-	PreferredUsername string `json:"preferred_username,omitempty"`
+	Sub      string `json:"sub"`
+	Name     string `json:"name,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Picture  string `json:"picture,omitempty"`
+	Username string `json:"username,omitempty"`
 }
 
 // serveUserInfo handles the /userinfo endpoint
@@ -62,18 +62,12 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Sub is always included (openid scope is mandatory)
 	ui.Sub = ar.RemoteUser.Node.User.String()
 
-	// Check scopes and only include claims that were authorized
-	for _, scope := range ar.Scopes {
-		switch scope {
-		case "profile":
-			ui.Name = ar.RemoteUser.UserProfile.DisplayName
-			ui.Picture = ar.RemoteUser.UserProfile.ProfilePicURL
-			if username, _, ok := strings.Cut(ar.RemoteUser.UserProfile.LoginName, "@"); ok {
-				ui.PreferredUsername = username
-			}
-		case "email":
-			ui.Email = ar.RemoteUser.UserProfile.LoginName
-		}
+	// Always include user profile information if available
+	ui.Name = ar.RemoteUser.UserProfile.DisplayName
+	ui.Picture = ar.RemoteUser.UserProfile.ProfilePicURL
+	ui.Email = ar.RemoteUser.UserProfile.LoginName
+	if username, _, ok := strings.Cut(ar.RemoteUser.UserProfile.LoginName, "@"); ok {
+		ui.Username = username
 	}
 
 	rules, err := tailcfg.UnmarshalCapJSON[capRule](ar.RemoteUser.CapMap, tailcfg.PeerCapabilityTsIDP)

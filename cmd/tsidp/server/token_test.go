@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -612,7 +613,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 					ID:     "test-client",
 					Secret: "test-secret",
 				}
-				
+
 				// Don't set up the wrong client - it should be rejected as unknown
 			} else if tt.refreshToken == "expired-token" {
 				s.refreshToken[tt.refreshToken] = &AuthRequest{
@@ -910,7 +911,7 @@ func TestRefreshTokenWithResources(t *testing.T) {
 	}
 }
 
-// TestRefreshTokenScopePreservation tests scope preservation in refresh tokens  
+// TestRefreshTokenScopePreservation tests scope preservation in refresh tokens
 // Migrated from legacy/tsidp_test.go:1460-1541
 func TestRefreshTokenScopePreservation(t *testing.T) {
 	s := New(nil, "", false, false, false)
@@ -1125,14 +1126,201 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 	}
 }
 
-// marshalCapRules is a helper to convert stsCapRule slice to JSON for testing
-// Migrated from legacy/tsidp_test.go:2653-2661
-func marshalCapRules(rules []stsCapRule) []tailcfg.RawMessage {
-	// UnmarshalCapJSON expects each rule to be a separate RawMessage
-	var msgs []tailcfg.RawMessage
-	for _, rule := range rules {
-		data, _ := json.Marshal(rule)
-		msgs = append(msgs, tailcfg.RawMessage(data))
+// Ported from:
+// https://github.com/tailscale/tailscale/blob/3e4b0c1516819ea47a90189a4f116a2e44b97e39/cmd/tsidp/tsidp_test.go#L484
+// - core test logic unchanged
+// - renamed idpServer -> IDPServer
+// - renamed authRequest -> AuthRequest
+func TestServeToken(t *testing.T) {
+	tests := []struct {
+		name        string
+		caps        tailcfg.PeerCapMap
+		method      string
+		grantType   string
+		code        string
+		omitCode    bool
+		redirectURI string
+		remoteAddr  string
+		expectError bool
+		expected    map[string]any
+	}{
+		{
+			name:        "GET not allowed",
+			method:      "GET",
+			grantType:   "authorization_code",
+			expectError: true,
+		},
+		{
+			name:        "unsupported grant type",
+			method:      "POST",
+			grantType:   "pkcs",
+			expectError: true,
+		},
+		{
+			name:        "invalid code",
+			method:      "POST",
+			grantType:   "authorization_code",
+			code:        "invalid-code",
+			expectError: true,
+		},
+		{
+			name:        "omit code from form",
+			method:      "POST",
+			grantType:   "authorization_code",
+			omitCode:    true,
+			expectError: true,
+		},
+		{
+			name:        "invalid redirect uri",
+			method:      "POST",
+			grantType:   "authorization_code",
+			code:        "valid-code",
+			redirectURI: "https://invalid.example.com/callback",
+			remoteAddr:  "127.0.0.1:12345",
+			expectError: true,
+		},
+		{
+			name:        "invalid remoteAddr",
+			method:      "POST",
+			grantType:   "authorization_code",
+			redirectURI: "https://rp.example.com/callback",
+			code:        "valid-code",
+			remoteAddr:  "192.168.0.1:12345",
+			expectError: true,
+		},
+		{
+			name:        "extra claim included",
+			method:      "POST",
+			grantType:   "authorization_code",
+			redirectURI: "https://rp.example.com/callback",
+			code:        "valid-code",
+			remoteAddr:  "127.0.0.1:12345",
+			caps: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityTsIDP: {
+					mustMarshalJSON(t, capRule{
+						IncludeInUserInfo: true,
+						ExtraClaims: map[string]any{
+							"foo": "bar",
+						},
+					}),
+				},
+			},
+			expected: map[string]any{
+				"foo": "bar",
+			},
+		},
+		{
+			name:        "attempt to overwrite protected claim",
+			method:      "POST",
+			grantType:   "authorization_code",
+			redirectURI: "https://rp.example.com/callback",
+			code:        "valid-code",
+			caps: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityTsIDP: {
+					mustMarshalJSON(t, capRule{
+						IncludeInUserInfo: true,
+						ExtraClaims: map[string]any{
+							"sub": "should-not-overwrite",
+						},
+					}),
+				},
+			},
+			expectError: true,
+		},
 	}
-	return msgs
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now := time.Now()
+
+			// Fake user/node
+			profile := &tailcfg.UserProfile{
+				LoginName:     "alice@example.com",
+				DisplayName:   "Alice Example",
+				ProfilePicURL: "https://example.com/alice.jpg",
+			}
+			node := &tailcfg.Node{
+				ID:       123,
+				Name:     "test-node.test.ts.net.",
+				User:     456,
+				Key:      key.NodePublic{},
+				Cap:      1,
+				DiscoKey: key.DiscoPublic{},
+			}
+
+			remoteUser := &apitype.WhoIsResponse{
+				Node:        node,
+				UserProfile: profile,
+				CapMap:      tt.caps,
+			}
+
+			s := &IDPServer{
+				code: map[string]*AuthRequest{
+					"valid-code": {
+						ClientID:    "client-id",
+						Nonce:       "nonce123",
+						RedirectURI: "https://rp.example.com/callback",
+						ValidTill:   now.Add(5 * time.Minute),
+						RemoteUser:  remoteUser,
+						LocalRP:     true,
+					},
+				},
+			}
+			// Inject a working signer
+			s.lazySigner.Set(oidcTestingSigner(t))
+
+			form := url.Values{}
+			form.Set("grant_type", tt.grantType)
+			form.Set("redirect_uri", tt.redirectURI)
+			if !tt.omitCode {
+				form.Set("code", tt.code)
+			}
+
+			req := httptest.NewRequest(tt.method, "/token", strings.NewReader(form.Encode()))
+			req.RemoteAddr = tt.remoteAddr
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rr := httptest.NewRecorder()
+
+			s.serveToken(rr, req)
+
+			if tt.expectError {
+				if rr.Code == http.StatusOK {
+					t.Fatalf("expected error, got 200 OK: %s", rr.Body.String())
+				}
+				return
+			}
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+			}
+
+			var resp struct {
+				IDToken string `json:"id_token"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to unmarshal response: %v", err)
+			}
+
+			tok, err := jwt.ParseSigned(resp.IDToken)
+			if err != nil {
+				t.Fatalf("failed to parse ID token: %v", err)
+			}
+
+			out := make(map[string]any)
+			if err := tok.Claims(oidcTestingPublicKey(t), &out); err != nil {
+				t.Fatalf("failed to extract claims: %v", err)
+			}
+
+			for k, want := range tt.expected {
+				got, ok := out[k]
+				if !ok {
+					t.Errorf("missing expected claim %q", k)
+					continue
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("claim %q: got %v, want %v", k, got, want)
+				}
+			}
+		})
+	}
 }

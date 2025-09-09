@@ -5,51 +5,16 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/netip"
 	"reflect"
-	"sort"
 	"testing"
 
 	"gopkg.in/square/go-jose.v2/jwt"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 )
-
-// normalizeMap recursively sorts []any values in a map[string]any to ensure
-// deterministic test comparisons. This is necessary because JSON marshaling
-// doesn't guarantee array order, and we need stable comparisons when testing
-// claim merging and flattening logic.
-//
-// migrated from tsidp_test.go at:
-// https://github.com/tailscale/tailscale/blob/3e4b0c1516819ea4/cmd/tsidp/tsidp_test.go#L50
-func normalizeMap(t *testing.T, m map[string]any) map[string]any {
-	t.Helper()
-	normalized := make(map[string]any, len(m))
-	for k, v := range m {
-		switch val := v.(type) {
-		case []any:
-			sorted := make([]string, len(val))
-			for i, item := range val {
-				sorted[i] = fmt.Sprintf("%v", item) // convert everything to string for sorting
-			}
-			sort.Strings(sorted)
-
-			// convert back to []any
-			sortedIface := make([]any, len(sorted))
-			for i, s := range sorted {
-				sortedIface[i] = s
-			}
-			normalized[k] = sortedIface
-
-		default:
-			normalized[k] = v
-		}
-	}
-	return normalized
-}
 
 func TestFlattenExtraClaims(t *testing.T) {
 	log.SetOutput(io.Discard) // suppress log output during tests
