@@ -16,15 +16,10 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// Test helper functions for strict OAuth mode testing
-func setupTestServer(t *testing.T, strictMode bool) *IDPServer {
-	return setupTestServerWithClient(t, strictMode, nil)
-}
-
 // setupTestServerWithClient creates a test server with an optional LocalClient.
 // If lc is nil, the server will have no LocalClient (original behavior).
 // If lc is provided, it will be used for WhoIs calls during testing.
-func setupTestServerWithClient(t *testing.T, strictMode bool, lc *local.Client) *IDPServer {
+func setupTestServer(t *testing.T, lc *local.Client) *IDPServer {
 	t.Helper()
 
 	srv := &IDPServer{
@@ -36,7 +31,7 @@ func setupTestServerWithClient(t *testing.T, strictMode bool, lc *local.Client) 
 		lc:            lc,
 	}
 
-	// Add a test client for funnel/strict mode testing
+	// Add a test client
 	srv.funnelClients["test-client"] = &FunnelClient{
 		ID:          "test-client",
 		Secret:      "test-secret",

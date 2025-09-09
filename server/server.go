@@ -221,7 +221,7 @@ func (s *IDPServer) newMux() *http.ServeMux {
 
 	// Register /authorize endpoint
 	// Migrated from legacy/tsidp.go:679
-	mux.HandleFunc("/authorize/", s.serveAuthorize)
+	mux.HandleFunc("/authorize", s.serveAuthorize)
 
 	// Register /clients/ endpoint
 	// Migrated from legacy/tsidp.go:684
