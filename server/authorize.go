@@ -16,9 +16,9 @@ import (
 	"tailscale.com/util/rands"
 )
 
-// authorize handles the OAuth 2.0 authorization endpoint
+// serveAuthorize handles the OAuth 2.0 authorization endpoint
 // Migrated from legacy/tsidp.go:554-672
-func (s *IDPServer) authorize(w http.ResponseWriter, r *http.Request) {
+func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// This URL is visited by the user who is being authenticated. If they are
 	// visiting the URL over Funnel, that means they are not part of the
 	// tailnet that they are trying to be authenticated for.
