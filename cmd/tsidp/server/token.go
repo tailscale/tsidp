@@ -60,6 +60,12 @@ type tailscaleClaims struct {
 
 	// AuthorizedParty is the azp claim for multi-audience scenarios
 	AuthorizedParty string `json:"azp,omitempty"`
+
+	// UserName is the local part of Email (without '@' and domain).
+	// It is a temporary (2023-11-15) hack during development.
+	// We should probably let this be configured via grants.
+	// 2025-09-08 - left in here for test compatibility
+	UserName string `json:"username,omitempty"`
 }
 
 // Capability rule types
@@ -731,123 +737,6 @@ func writeTokenEndpointError(w http.ResponseWriter, statusCode int, errorCode, e
 		Error:            errorCode,
 		ErrorDescription: errorDescription,
 	})
-}
-
-// withExtraClaims merges flattened extra claims from a list of capRule into the provided struct v,
-// returning a map[string]any that combines both sources.
-//
-// v is any struct whose fields represent static claims; it is first marshaled to JSON, then unmarshalled into a generic map.
-// rules is a slice of capRule objects that may define additional (extra) claims to merge.
-//
-// These extra claims are flattened and merged into the base map unless they conflict with protected claims.
-// Claims defined in openIDSupportedClaims are considered protected and cannot be overwritten.
-// If an extra claim attempts to overwrite a protected claim, an error is returned.
-//
-// Returns the merged claims map or an error if any protected claim is violated or JSON (un)marshaling fails.
-// Migrated from legacy/tsidp.go:877-919
-func withExtraClaims(v any, rules []capRule) (map[string]any, error) {
-	// Marshal the static struct
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal into a generic map
-	var claimMap map[string]any
-	if err := json.Unmarshal(data, &claimMap); err != nil {
-		return nil, err
-	}
-
-	// Convert views.Slice to a map[string]struct{} for efficient lookup
-	protected := make(map[string]struct{}, len(openIDSupportedClaims.AsSlice()))
-	for _, claim := range openIDSupportedClaims.AsSlice() {
-		protected[claim] = struct{}{}
-	}
-
-	// Merge extra claims
-	extra := flattenExtraClaims(rules)
-	for k, v := range extra {
-		if _, isProtected := protected[k]; isProtected {
-			log.Printf("Skip overwriting of existing claim %q", k)
-			return nil, fmt.Errorf("extra claim %q overwriting existing claim", k)
-		}
-
-		claimMap[k] = v
-	}
-
-	return claimMap, nil
-}
-
-// flattenExtraClaims merges all ExtraClaims from a slice of capRule into a single map
-// Migrated from legacy/tsidp.go:795-851
-func flattenExtraClaims(rules []capRule) map[string]any {
-	// sets stores deduplicated stringified values for each claim key.
-	sets := make(map[string]map[string]struct{})
-
-	// Track whether each claim was originally a slice or scalar
-	wasSlice := make(map[string]bool)
-
-	for _, rule := range rules {
-		for k, v := range rule.ExtraClaims {
-			if sets[k] == nil {
-				sets[k] = make(map[string]struct{})
-			}
-
-			// Handle both slice and scalar values
-			switch vv := v.(type) {
-			case []any:
-				wasSlice[k] = true
-				for _, elem := range vv {
-					// Convert to JSON string for deduplication
-					jsonStr, err := json.Marshal(elem)
-					if err != nil {
-						continue
-					}
-					sets[k][string(jsonStr)] = struct{}{}
-				}
-			default:
-				// If we haven't seen this claim before, record whether it's a slice
-				if _, exists := wasSlice[k]; !exists {
-					wasSlice[k] = false
-				}
-				// Convert scalar to JSON string for deduplication
-				jsonStr, err := json.Marshal(vv)
-				if err != nil {
-					continue
-				}
-				sets[k][string(jsonStr)] = struct{}{}
-			}
-		}
-	}
-
-	// Build the final result
-	result := make(map[string]any)
-	for k, stringSet := range sets {
-		if wasSlice[k] {
-			// Return as slice
-			var values []any
-			for jsonStr := range stringSet {
-				var v any
-				if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
-					continue
-				}
-				values = append(values, v)
-			}
-			result[k] = values
-		} else {
-			// Return as scalar (should only have one value)
-			for jsonStr := range stringSet {
-				var v any
-				if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
-					continue
-				}
-				result[k] = v
-				break // Only use the first (and should be only) value
-			}
-		}
-	}
-
-	return result
 }
 
 // serveIntrospect handles the /introspect endpoint for token introspection (RFC 7662)
