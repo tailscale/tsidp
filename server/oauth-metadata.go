@@ -7,9 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	"net/netip"
 
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/ipn"
@@ -102,42 +100,17 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tsidp: not found", http.StatusNotFound)
 		return
 	}
-	ap, err := netip.ParseAddrPort(r.RemoteAddr)
-	if err != nil {
-		log.Printf("Error parsing remote addr: %v", err)
-		http.Error(w, "tsidp: invalid remote address", http.StatusBadRequest)
-		return
-	}
-	var authorizeEndpoint string
-	rpEndpoint := s.serverURL
-	if isFunnelRequest(r) {
-		authorizeEndpoint = fmt.Sprintf("%s/authorize/funnel", s.serverURL)
-	} else if ap.Addr().IsLoopback() {
-		rpEndpoint = s.loopbackURL
-		authorizeEndpoint = fmt.Sprintf("%s/authorize/localhost", s.serverURL)
-	} else if s.lc != nil {
-		if who, err := s.lc.WhoIs(r.Context(), r.RemoteAddr); err == nil {
-			authorizeEndpoint = fmt.Sprintf("%s/authorize/%d", s.serverURL, who.Node.ID)
-		} else {
-			log.Printf("Error getting WhoIs: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		http.Error(w, "tsidp: internal server error", http.StatusInternalServerError)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	je := json.NewEncoder(w)
 	je.SetIndent("", "  ")
 	metadata := openIDProviderMetadata{
-		AuthorizationEndpoint:            authorizeEndpoint,
-		Issuer:                           rpEndpoint,
-		JWKS_URI:                         rpEndpoint + "/.well-known/jwks.json",
-		UserInfoEndpoint:                 rpEndpoint + "/userinfo",
-		TokenEndpoint:                    rpEndpoint + "/token",
-		IntrospectionEndpoint:            rpEndpoint + "/introspect",
+		AuthorizationEndpoint:            s.serverURL + "/authorize",
+		Issuer:                           s.serverURL,
+		JWKS_URI:                         s.serverURL + "/.well-known/jwks.json",
+		UserInfoEndpoint:                 s.serverURL + "/userinfo",
+		TokenEndpoint:                    s.serverURL + "/token",
+		IntrospectionEndpoint:            s.serverURL + "/introspect",
 		ScopesSupported:                  openIDSupportedScopes,
 		ResponseTypesSupported:           openIDSupportedReponseTypes,
 		SubjectTypesSupported:            openIDSupportedSubjectTypes,
@@ -155,7 +128,7 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Only expose registration endpoint over tailnet, not funnel
 	if !isFunnelRequest(r) {
-		metadata.RegistrationEndpoint = rpEndpoint + "/register"
+		metadata.RegistrationEndpoint = s.serverURL + "/register"
 	}
 
 	if err := je.Encode(metadata); err != nil {
@@ -180,31 +153,6 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tsidp: not found", http.StatusNotFound)
 		return
 	}
-	ap, err := netip.ParseAddrPort(r.RemoteAddr)
-	if err != nil {
-		log.Printf("Error parsing remote addr: %v", err)
-		http.Error(w, "tsidp: invalid remote address", http.StatusBadRequest)
-		return
-	}
-	var authorizeEndpoint string
-	rpEndpoint := s.serverURL
-	if isFunnelRequest(r) {
-		authorizeEndpoint = fmt.Sprintf("%s/authorize/funnel", s.serverURL)
-	} else if ap.Addr().IsLoopback() {
-		rpEndpoint = s.loopbackURL
-		authorizeEndpoint = fmt.Sprintf("%s/authorize/localhost", s.serverURL)
-	} else if s.lc != nil {
-		if who, err := s.lc.WhoIs(r.Context(), r.RemoteAddr); err == nil {
-			authorizeEndpoint = fmt.Sprintf("%s/authorize/%d", s.serverURL, who.Node.ID)
-		} else {
-			log.Printf("Error getting WhoIs: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		http.Error(w, "tsidp: internal server error", http.StatusInternalServerError)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	je := json.NewEncoder(w)
@@ -217,11 +165,11 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metadata := oauthAuthorizationServerMetadata{
-		Issuer:                             rpEndpoint,
-		AuthorizationEndpoint:              authorizeEndpoint,
-		TokenEndpoint:                      rpEndpoint + "/token",
-		IntrospectionEndpoint:              rpEndpoint + "/introspect",
-		JWKS_URI:                           rpEndpoint + "/.well-known/jwks.json",
+		Issuer:                             s.serverURL,
+		AuthorizationEndpoint:              s.serverURL + "/authorize",
+		TokenEndpoint:                      s.serverURL + "/token",
+		IntrospectionEndpoint:              s.serverURL + "/introspect",
+		JWKS_URI:                           s.serverURL + "/.well-known/jwks.json",
 		ResponseTypesSupported:             openIDSupportedReponseTypes,
 		GrantTypesSupported:                views.SliceOf(grantTypes),
 		ScopesSupported:                    openIDSupportedScopes,
@@ -233,7 +181,7 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 
 	// Only expose registration endpoint over tailnet, not funnel
 	if !isFunnelRequest(r) {
-		metadata.RegistrationEndpoint = rpEndpoint + "/register"
+		metadata.RegistrationEndpoint = s.serverURL + "/register"
 	}
 
 	if err := je.Encode(metadata); err != nil {
