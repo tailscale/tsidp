@@ -21,12 +21,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tailscale/tsidp/server"
+
 	"tailscale.com/client/local"
-	"tailscale.com/cmd/tsidp/server"
 	"tailscale.com/envknob"
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
+
 	"tailscale.com/tsnet"
 	"tailscale.com/version"
 )
