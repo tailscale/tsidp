@@ -38,7 +38,6 @@ import (
 // Migrated from legacy/tsidp.go:58
 type CtxConn struct{}
 
-
 // IDPServer handles OIDC identity provider operations
 // Migrated from legacy/tsidp.go:306-323
 type IDPServer struct {
@@ -141,7 +140,7 @@ type ActorClaim struct {
 // signingKey represents a JWT signing key
 // Migrated from legacy/tsidp.go:2336-2339
 type signingKey struct {
-	Kid uint64        `json:"kid"`
+	Kid uint64          `json:"kid"`
 	Key *rsa.PrivateKey `json:"-"`
 }
 
@@ -174,7 +173,6 @@ func (s *IDPServer) ServerURL() string {
 func (s *IDPServer) SetLoopbackURL(url string) {
 	s.loopbackURL = url
 }
-
 
 // CleanupExpiredTokens removes expired tokens from memory
 // Migrated from legacy/tsidp.go:2280-2299
@@ -220,31 +218,31 @@ func (s *IDPServer) newMux() *http.ServeMux {
 	mux.HandleFunc("/.well-known/jwks.json", s.serveJWKS)
 	mux.HandleFunc("/.well-known/openid-configuration", s.serveOpenIDConfig)
 	mux.HandleFunc("/.well-known/oauth-authorization-server", s.serveOAuthMetadata)
-	
+
 	// Register /authorize endpoint
 	// Migrated from legacy/tsidp.go:679
-	mux.HandleFunc("/authorize/", s.authorize)
-	
+	mux.HandleFunc("/authorize", s.serveAuthorize)
+
 	// Register /clients/ endpoint
 	// Migrated from legacy/tsidp.go:684
 	mux.HandleFunc("/clients/", s.serveClients)
-	
+
 	// Register /token endpoint
 	// Migrated from legacy/tsidp.go:681
 	mux.HandleFunc("/token", s.serveToken)
-	
+
 	// Register /introspect endpoint
 	// Migrated from legacy/tsidp.go:682
 	mux.HandleFunc("/introspect", s.serveIntrospect)
-	
+
 	// Register /userinfo endpoint
 	// Migrated from legacy/tsidp.go:680
 	mux.HandleFunc("/userinfo", s.serveUserInfo)
-	
+
 	// Register /register endpoint for Dynamic Client Registration
 	// Migrated from legacy/tsidp.go:683
 	mux.HandleFunc("/register", s.serveDynamicClientRegistration)
-	
+
 	// Register UI handler - must be last as it handles "/"
 	// Migrated from legacy/tsidp.go:685
 	mux.HandleFunc("/", s.handleUI)

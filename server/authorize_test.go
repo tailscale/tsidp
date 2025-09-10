@@ -528,3 +528,175 @@ func TestPKCEWithRefreshToken(t *testing.T) {
 		t.Error("expected refresh token in refresh response")
 	}
 }
+
+// TestServeAuthorize verifies OAuth authorization endpoint security and validation logic.
+func TestServeAuthorize(t *testing.T) {
+	tests := []struct {
+		name           string
+		clientID       string
+		redirectURI    string
+		state          string
+		nonce          string
+		setupClient    bool
+		clientRedirect string
+		useFunnel      bool // whether to simulate funnel request
+		mockWhoIsError bool // whether to make WhoIs return an error
+		expectError    bool
+		expectCode     int
+		expectRedirect bool
+	}{
+		// Security boundary test: funnel rejection
+		{
+			name:           "funnel requests are always rejected for security",
+			clientID:       "test-client",
+			redirectURI:    "https://rp.example.com/callback",
+			state:          "random-state",
+			nonce:          "random-nonce",
+			setupClient:    true,
+			clientRedirect: "https://rp.example.com/callback",
+			useFunnel:      true,
+			expectError:    true,
+			expectCode:     http.StatusUnauthorized,
+		},
+
+		// parameter validation tests (non-funnel)
+		{
+			name:        "missing client_id",
+			clientID:    "",
+			redirectURI: "https://rp.example.com/callback",
+			useFunnel:   false,
+			expectError: true,
+			expectCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "missing redirect_uri",
+			clientID:    "test-client",
+			redirectURI: "",
+			useFunnel:   false,
+			expectError: true,
+			expectCode:  http.StatusBadRequest,
+		},
+
+		// client validation tests (non-funnel)
+		{
+			name:        "invalid client_id",
+			clientID:    "invalid-client",
+			redirectURI: "https://rp.example.com/callback",
+			setupClient: false,
+			useFunnel:   false,
+			expectError: true,
+			expectCode:  http.StatusBadRequest,
+		},
+		{
+			name:           "redirect_uri mismatch",
+			clientID:       "test-client",
+			redirectURI:    "https://wrong.example.com/callback",
+			setupClient:    true,
+			clientRedirect: "https://rp.example.com/callback",
+			useFunnel:      false,
+			expectError:    true,
+			expectCode:     http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := setupTestServer(t, nil)
+
+			// For non-funnel tests, we'll test the parameter validation logic
+			// without needing to mock WhoIs, since the validation happens before WhoIs calls
+
+			// Setup client if needed
+			srv.funnelClients["test-client"] = &FunnelClient{
+				ID:           "test-client",
+				Secret:       "test-secret",
+				Name:         "Test Client",
+				RedirectURIs: []string{"http://dummydomain.ts", tt.clientRedirect}, /* test it matches redirect at end of slice */
+			}
+
+			// Create request
+			reqURL := "/authorize"
+
+			query := url.Values{}
+			if tt.clientID != "" {
+				query.Set("client_id", tt.clientID)
+			}
+			if tt.redirectURI != "" {
+				query.Set("redirect_uri", tt.redirectURI)
+			}
+			if tt.state != "" {
+				query.Set("state", tt.state)
+			}
+			if tt.nonce != "" {
+				query.Set("nonce", tt.nonce)
+			}
+
+			reqURL += "?" + query.Encode()
+			req := httptest.NewRequest("GET", reqURL, nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+
+			// Set funnel header only when explicitly testing funnel behavior
+			if tt.useFunnel {
+				req.Header.Set("Tailscale-Funnel-Request", "true")
+			}
+
+			rr := httptest.NewRecorder()
+			srv.serveAuthorize(rr, req)
+
+			if tt.expectError {
+				if rr.Code != tt.expectCode {
+					t.Errorf("expected status code %d, got %d: %s", tt.expectCode, rr.Code, rr.Body.String())
+				}
+			} else if tt.expectRedirect {
+				if rr.Code != http.StatusFound {
+					t.Errorf("expected redirect (302), got %d: %s", rr.Code, rr.Body.String())
+				}
+
+				location := rr.Header().Get("Location")
+				if location == "" {
+					t.Error("expected Location header in redirect response")
+				} else {
+					// Parse the redirect URL to verify it contains a code
+					redirectURL, err := url.Parse(location)
+					if err != nil {
+						t.Errorf("failed to parse redirect URL: %v", err)
+					} else {
+						code := redirectURL.Query().Get("code")
+						if code == "" {
+							t.Error("expected 'code' parameter in redirect URL")
+						}
+
+						// Verify state is preserved if provided
+						if tt.state != "" {
+							returnedState := redirectURL.Query().Get("state")
+							if returnedState != tt.state {
+								t.Errorf("expected state '%s', got '%s'", tt.state, returnedState)
+							}
+						}
+
+						// Verify the auth request was stored
+						srv.mu.Lock()
+						ar, ok := srv.code[code]
+						srv.mu.Unlock()
+
+						if !ok {
+							t.Error("expected authorization request to be stored")
+						} else {
+							if ar.ClientID != tt.clientID {
+								t.Errorf("expected clientID '%s', got '%s'", tt.clientID, ar.ClientID)
+							}
+							if ar.RedirectURI != tt.redirectURI {
+								t.Errorf("expected redirectURI '%s', got '%s'", tt.redirectURI, ar.RedirectURI)
+							}
+							if ar.Nonce != tt.nonce {
+								t.Errorf("expected nonce '%s', got '%s'", tt.nonce, ar.Nonce)
+							}
+						}
+					}
+				}
+			} else {
+				t.Errorf("unexpected test case: not expecting error or redirect")
+			}
+		})
+	}
+}

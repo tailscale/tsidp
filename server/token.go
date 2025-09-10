@@ -9,14 +9,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/netip"
 	"strings"
 	"time"
 
 	"gopkg.in/square/go-jose.v2/jwt"
-	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -134,9 +132,9 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_grant", "code not found")
 		return
 	}
-	if err := ar.allowRelyingParty(r, s.lc); err != nil {
-		log.Printf("Error allowing relying party: %v", err)
-		writeTokenEndpointError(w, http.StatusUnauthorized, "invalid_client", err.Error())
+	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
+		//log.Printf("XXX Error allowing relying party: %v", err)
+		writeTokenEndpointError(w, httpStatusCode, "invalid_client", err.Error())
 		return
 	}
 	if ar.RedirectURI != r.FormValue("redirect_uri") {
@@ -164,7 +162,7 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 		// Validate requested resources using the same capability would be used for STS
 		validatedResources, err := s.validateResourcesForUser(ar.RemoteUser, resources)
 		if err != nil {
-			log.Printf("Error validating resources: %v", err)
+			//log.Printf("Error validating resources: %v", err)
 			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "invalid resource")
 			return
 		}
@@ -199,9 +197,9 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Validate client authentication
-	if err := ar.allowRelyingParty(r, s.lc); err != nil {
-		log.Printf("Error allowing relying party: %v", err)
-		writeTokenEndpointError(w, http.StatusUnauthorized, "invalid_client", "")
+	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
+		//log.Printf("Error allowing relying party: %v", err)
+		writeTokenEndpointError(w, httpStatusCode, "invalid_client", err.Error())
 		return
 	}
 
@@ -211,8 +209,8 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 		// Validate requested resources are a subset of original grant
 		validatedResources, err := s.validateResourcesForUser(ar.RemoteUser, resources)
 		if err != nil {
-			log.Printf("Error validating resources: %v", err)
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "invalid resource")
+			//log.Printf("Error validating resources: %v", err)
+			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
 
@@ -320,8 +318,8 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	who := ar.RemoteUser
 	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "test-tailscale.com/idp/sts/openly-allow")
 	if err != nil {
-		log.Printf("tsidp: failed to unmarshal STS capability: %v", err)
-		writeTokenEndpointError(w, http.StatusForbidden, "access_denied", "access denied")
+		//log.Printf("tsidp: failed to unmarshal STS capability: %v", err)
+		writeTokenEndpointError(w, http.StatusForbidden, "access_denied", fmt.Sprintf("failed to unmarshal STS capability: %s", err.Error()))
 		return
 	}
 
@@ -406,8 +404,6 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 		ActorInfo:        actorInfo,
 
 		// Preserve original RP context
-		LocalRP:  ar.LocalRP,
-		RPNodeID: ar.RPNodeID,
 		FunnelRP: ar.FunnelRP, // Keep original funnel client if it exists
 	}
 
@@ -454,8 +450,8 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 	signer, err := s.oidcSigner()
 	if err != nil {
-		log.Printf("Error getting signer: %v", err)
-		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "internal server error")
+		//log.Printf("Error getting signer: %v", err)
+		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "internal server error - could not get signer")
 		return
 	}
 	jti := rands.HexString(32)
@@ -526,9 +522,6 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 			tsClaims.Picture = who.UserProfile.ProfilePicURL
 		}
 	}
-	if ar.LocalRP {
-		tsClaims.Issuer = s.loopbackURL
-	}
 
 	// Set azp (authorized party) claim when there are multiple audiences
 	// Per OIDC spec, azp is REQUIRED when the ID Token has multiple audiences
@@ -538,14 +531,14 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 
 	rules, err := tailcfg.UnmarshalCapJSON[capRule](who.CapMap, tailcfg.PeerCapabilityTsIDP)
 	if err != nil {
-		log.Printf("tsidp: failed to unmarshal capability: %v", err)
+		//log.Printf("tsidp: failed to unmarshal capability: %v", err)
 		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "failed to unmarshal capability")
 		return
 	}
 
 	tsClaimsWithExtra, err := withExtraClaims(tsClaims, rules)
 	if err != nil {
-		log.Printf("tsidp: failed to merge extra claims: %v", err)
+		//log.Printf("tsidp: failed to merge extra claims: %v", err)
 		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "failed to merge extra claims")
 		return
 	}
@@ -558,8 +551,8 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 	// Create an OIDC token using this issuer's signer.
 	token, err := jwt.Signed(signer).Claims(tsClaimsWithExtra).CompactSerialize()
 	if err != nil {
-		log.Printf("Error getting token: %v", err)
-		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "internal server error")
+		//log.Printf("Error getting token: %v", err)
+		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "error creating token")
 		return
 	}
 
@@ -733,6 +726,7 @@ func writeTokenEndpointError(w http.ResponseWriter, statusCode int, errorCode, e
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 	w.WriteHeader(statusCode)
+	//log.Printf("XXX token endpoint error: %d > %s\n", statusCode, errorDescription)
 	json.NewEncoder(w).Encode(oauthErrorResponse{
 		Error:            errorCode,
 		ErrorDescription: errorDescription,
@@ -798,13 +792,7 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 		resp["iat"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // issued 5 min before expiry
 		resp["nbf"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // not before time (same as iat)
 		resp["token_type"] = "Bearer"
-
-		// Add issuer claim
-		if ar.LocalRP {
-			resp["iss"] = s.loopbackURL
-		} else {
-			resp["iss"] = s.serverURL
-		}
+		resp["iss"] = s.serverURL
 
 		// Add jti if available
 		if ar.JTI != "" {
@@ -872,39 +860,28 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 
 // allowRelyingParty checks if the relying party is allowed to access the token
 // Migrated from legacy/tsidp.go:520-552
-func (ar *AuthRequest) allowRelyingParty(r *http.Request, lc *local.Client) error {
-	if ar.LocalRP {
-		ra, err := netip.ParseAddrPort(r.RemoteAddr)
-		if err != nil {
-			return err
-		}
-		if !ra.Addr().IsLoopback() {
-			return fmt.Errorf("tsidp: request from non-loopback address")
-		}
-		return nil
+func (ar *AuthRequest) allowRelyingParty(r *http.Request) (int, error) {
+	if ar.FunnelRP == nil {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: no relying party configured")
 	}
-	if ar.FunnelRP != nil {
-		clientID, clientSecret, ok := r.BasicAuth()
-		if !ok {
-			clientID = r.FormValue("client_id")
-			clientSecret = r.FormValue("client_secret")
-		}
-		clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(ar.FunnelRP.ID))
-		clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
-		if clientIDcmp != 1 || clientSecretcmp != 1 {
-			return fmt.Errorf("tsidp: invalid client credentials")
-		}
-		return nil
+
+	clientID, clientSecret, ok := r.BasicAuth()
+	if !ok {
+		clientID = r.FormValue("client_id")
+		clientSecret = r.FormValue("client_secret")
 	}
-	if lc == nil {
-		return fmt.Errorf("tsidp: no local client available for node validation")
+
+	if clientID == "" || clientSecret == "" {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: missing client credentials")
 	}
-	who, err := lc.WhoIs(r.Context(), r.RemoteAddr)
-	if err != nil {
-		return fmt.Errorf("tsidp: error getting WhoIs: %w", err)
+
+	clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(ar.FunnelRP.ID))
+	clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
+	if clientIDcmp != 1 {
+		return http.StatusBadRequest, fmt.Errorf("tsidp: client_id mismatch")
 	}
-	if ar.RPNodeID != who.Node.ID {
-		return fmt.Errorf("tsidp: token for different node")
+	if clientSecretcmp != 1 {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret: [%s] [%s]", clientID, clientSecret)
 	}
-	return nil
+	return http.StatusOK, nil
 }

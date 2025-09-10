@@ -353,7 +353,6 @@ func TestIntrospectWithResources(t *testing.T) {
 func TestIntrospectionRFC7662Compliance(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
-		loopbackURL:   "http://localhost:8080",
 		accessToken:   make(map[string]*AuthRequest),
 		funnelClients: make(map[string]*FunnelClient),
 	}
@@ -561,7 +560,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "valid-refresh-token",
 			clientID:     "wrong-client",
 			clientSecret: "wrong-secret",
-			expectStatus: http.StatusUnauthorized, // Both legacy and server should reject this
+			expectStatus: http.StatusBadRequest, // Both legacy and server should reject this
 			checkResponse: func(t *testing.T, body []byte) {
 				var resp oauthErrorResponse
 				if err := json.Unmarshal(body, &resp); err != nil {
@@ -1133,16 +1132,19 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 // - renamed authRequest -> AuthRequest
 func TestServeToken(t *testing.T) {
 	tests := []struct {
-		name        string
-		caps        tailcfg.PeerCapMap
-		method      string
-		grantType   string
-		code        string
-		omitCode    bool
-		redirectURI string
-		remoteAddr  string
-		expectError bool
-		expected    map[string]any
+		name           string
+		caps           tailcfg.PeerCapMap
+		method         string
+		grantType      string
+		code           string
+		omitCode       bool
+		redirectURI    string
+		remoteAddr     string
+		expectError    bool
+		expected       map[string]any
+		clientID       string
+		clientSecret   string
+		useCredentials bool
 	}{
 		{
 			name:        "GET not allowed",
@@ -1189,12 +1191,15 @@ func TestServeToken(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "extra claim included",
-			method:      "POST",
-			grantType:   "authorization_code",
-			redirectURI: "https://rp.example.com/callback",
-			code:        "valid-code",
-			remoteAddr:  "127.0.0.1:12345",
+			name:           "extra claim included",
+			method:         "POST",
+			grantType:      "authorization_code",
+			redirectURI:    "https://rp.example.com/callback",
+			code:           "extra-claim-included",
+			remoteAddr:     "127.0.0.1:12345",
+			clientID:       "test-client",
+			clientSecret:   "test-secret",
+			useCredentials: true,
 			caps: tailcfg.PeerCapMap{
 				tailcfg.PeerCapabilityTsIDP: {
 					mustMarshalJSON(t, capRule{
@@ -1257,12 +1262,27 @@ func TestServeToken(t *testing.T) {
 			s := &IDPServer{
 				code: map[string]*AuthRequest{
 					"valid-code": {
-						ClientID:    "client-id",
+						ClientID:    "test-client",
 						Nonce:       "nonce123",
 						RedirectURI: "https://rp.example.com/callback",
 						ValidTill:   now.Add(5 * time.Minute),
 						RemoteUser:  remoteUser,
-						LocalRP:     true,
+					},
+
+					// only for the extra claim included test
+					// which requires checking a client_id and client_secret
+					"extra-claim-included": {
+						ClientID:    "test-client",
+						Nonce:       "nonce123",
+						RedirectURI: "https://rp.example.com/callback",
+						ValidTill:   now.Add(5 * time.Minute),
+						RemoteUser:  remoteUser,
+						FunnelRP: &FunnelClient{
+							Name:         "A Test Client",
+							ID:           "test-client",
+							Secret:       "test-secret",
+							RedirectURIs: []string{"https://rp.example.com"},
+						},
 					},
 				},
 			}
@@ -1274,6 +1294,12 @@ func TestServeToken(t *testing.T) {
 			form.Set("redirect_uri", tt.redirectURI)
 			if !tt.omitCode {
 				form.Set("code", tt.code)
+			}
+
+			if tt.useCredentials {
+				t.Log("Sending credentials") // Debug log"
+				form.Set("client_id", tt.clientID)
+				form.Set("client_secret", tt.clientSecret)
 			}
 
 			req := httptest.NewRequest(tt.method, "/token", strings.NewReader(form.Encode()))
@@ -1319,6 +1345,234 @@ func TestServeToken(t *testing.T) {
 				}
 				if !reflect.DeepEqual(got, want) {
 					t.Errorf("claim %q: got %v, want %v", k, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestServeTokenWithClientValidation verifies OAuth token endpoint security
+func TestServeTokenWithClientValidation(t *testing.T) {
+	tests := []struct {
+		name                string
+		method              string
+		grantType           string
+		code                string
+		clientID            string
+		clientSecret        string
+		redirectURI         string
+		useBasicAuth        bool
+		setupAuthRequest    bool
+		authRequestClient   string
+		authRequestRedirect string
+		expectError         bool
+		expectCode          int
+		expectIDToken       bool
+	}{
+		{
+			name:                "valid token exchange with form credentials",
+			method:              "POST",
+			grantType:           "authorization_code",
+			code:                "valid-code",
+			clientID:            "test-client",
+			clientSecret:        "test-secret",
+			redirectURI:         "https://rp.example.com/callback",
+			setupAuthRequest:    true,
+			authRequestClient:   "test-client",
+			authRequestRedirect: "https://rp.example.com/callback",
+			expectIDToken:       true,
+		},
+		{
+			name:                "valid token exchange with basic auth",
+			method:              "POST",
+			grantType:           "authorization_code",
+			code:                "valid-code",
+			redirectURI:         "https://rp.example.com/callback",
+			useBasicAuth:        true,
+			clientID:            "test-client",
+			clientSecret:        "test-secret",
+			setupAuthRequest:    true,
+			authRequestClient:   "test-client",
+			authRequestRedirect: "https://rp.example.com/callback",
+			expectIDToken:       true,
+		},
+		{
+			name:                "missing client credentials",
+			method:              "POST",
+			grantType:           "authorization_code",
+			code:                "valid-code",
+			redirectURI:         "https://rp.example.com/callback",
+			setupAuthRequest:    true,
+			authRequestClient:   "test-client",
+			authRequestRedirect: "https://rp.example.com/callback",
+			expectError:         true,
+			expectCode:          http.StatusUnauthorized,
+		},
+		{
+			name:              "client_id mismatch",
+			method:            "POST",
+			grantType:         "authorization_code",
+			code:              "valid-code",
+			clientID:          "wrong-client",
+			clientSecret:      "test-secret",
+			redirectURI:       "https://rp.example.com/callback",
+			setupAuthRequest:  true,
+			authRequestClient: "test-client",
+			expectError:       true,
+			expectCode:        http.StatusBadRequest,
+		},
+		{
+			name:                "invalid client secret",
+			method:              "POST",
+			grantType:           "authorization_code",
+			code:                "valid-code",
+			clientID:            "test-client",
+			clientSecret:        "wrong-secret",
+			redirectURI:         "https://rp.example.com/callback",
+			setupAuthRequest:    true,
+			authRequestClient:   "test-client",
+			authRequestRedirect: "https://rp.example.com/callback",
+			expectError:         true,
+			expectCode:          http.StatusUnauthorized,
+		},
+		{
+			name:                "redirect_uri mismatch",
+			method:              "POST",
+			grantType:           "authorization_code",
+			code:                "valid-code",
+			clientID:            "test-client",
+			clientSecret:        "test-secret",
+			redirectURI:         "https://wrong.example.com/callback",
+			setupAuthRequest:    true,
+			authRequestClient:   "test-client",
+			authRequestRedirect: "https://rp.example.com/callback",
+			expectError:         true,
+			expectCode:          http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := setupTestServer(t, nil)
+
+			// Setup authorization request if needed
+			if tt.setupAuthRequest {
+				now := time.Now()
+				profile := &tailcfg.UserProfile{
+					LoginName:     "alice@example.com",
+					DisplayName:   "Alice Example",
+					ProfilePicURL: "https://example.com/alice.jpg",
+				}
+				node := &tailcfg.Node{
+					ID:       123,
+					Name:     "test-node.test.ts.net.",
+					User:     456,
+					Key:      key.NodePublic{},
+					Cap:      1,
+					DiscoKey: key.DiscoPublic{},
+				}
+				remoteUser := &apitype.WhoIsResponse{
+					Node:        node,
+					UserProfile: profile,
+					CapMap:      tailcfg.PeerCapMap{},
+				}
+
+				var funnelClientPtr *FunnelClient
+				if tt.authRequestClient != "" {
+					funnelClientPtr = &FunnelClient{
+						ID:          tt.authRequestClient,
+						Secret:      "test-secret",
+						Name:        "Test Client",
+						RedirectURI: tt.authRequestRedirect,
+					}
+					srv.funnelClients[tt.authRequestClient] = funnelClientPtr
+				}
+
+				srv.code["valid-code"] = &AuthRequest{
+					ClientID:    tt.authRequestClient,
+					Nonce:       "nonce123",
+					RedirectURI: tt.authRequestRedirect,
+					ValidTill:   now.Add(5 * time.Minute),
+					RemoteUser:  remoteUser,
+					FunnelRP:    funnelClientPtr,
+				}
+			}
+
+			// Create form data
+			form := url.Values{}
+			form.Set("grant_type", tt.grantType)
+			form.Set("code", tt.code)
+			form.Set("redirect_uri", tt.redirectURI)
+
+			if !tt.useBasicAuth {
+				if tt.clientID != "" {
+					form.Set("client_id", tt.clientID)
+				}
+				if tt.clientSecret != "" {
+					form.Set("client_secret", tt.clientSecret)
+				}
+			}
+
+			req := httptest.NewRequest(tt.method, "/token", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.RemoteAddr = "127.0.0.1:12345"
+
+			if tt.useBasicAuth && tt.clientID != "" && tt.clientSecret != "" {
+				req.SetBasicAuth(tt.clientID, tt.clientSecret)
+			}
+
+			rr := httptest.NewRecorder()
+			srv.serveToken(rr, req)
+
+			if tt.expectError {
+				if rr.Code != tt.expectCode {
+					t.Errorf("expected status code %d, got %d: %s", tt.expectCode, rr.Code, rr.Body.String())
+				}
+			} else if tt.expectIDToken {
+				if rr.Code != http.StatusOK {
+					t.Errorf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+				}
+
+				var resp struct {
+					IDToken     string `json:"id_token"`
+					AccessToken string `json:"access_token"`
+					TokenType   string `json:"token_type"`
+					ExpiresIn   int    `json:"expires_in"`
+				}
+
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+
+				if resp.IDToken == "" {
+					t.Error("expected id_token in response")
+				}
+				if resp.AccessToken == "" {
+					t.Error("expected access_token in response")
+				}
+				if resp.TokenType != "Bearer" {
+					t.Errorf("expected token_type 'Bearer', got '%s'", resp.TokenType)
+				}
+				if resp.ExpiresIn != 300 {
+					t.Errorf("expected expires_in 300, got %d", resp.ExpiresIn)
+				}
+
+				// Verify access token was stored
+				srv.mu.Lock()
+				_, ok := srv.accessToken[resp.AccessToken]
+				srv.mu.Unlock()
+
+				if !ok {
+					t.Error("expected access token to be stored")
+				}
+
+				// Verify authorization code was consumed
+				srv.mu.Lock()
+				_, ok = srv.code[tt.code]
+				srv.mu.Unlock()
+
+				if ok {
+					t.Error("expected authorization code to be consumed")
 				}
 			}
 		})
