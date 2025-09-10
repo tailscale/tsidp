@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"gopkg.in/square/go-jose.v2/jwt"
-	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -133,7 +132,7 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_grant", "code not found")
 		return
 	}
-	if httpStatusCode, err := ar.allowRelyingParty(r, s.lc); err != nil {
+	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
 		//log.Printf("XXX Error allowing relying party: %v", err)
 		writeTokenEndpointError(w, httpStatusCode, "invalid_client", err.Error())
 		return
@@ -198,7 +197,7 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Validate client authentication
-	if httpStatusCode, err := ar.allowRelyingParty(r, s.lc); err != nil {
+	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
 		//log.Printf("Error allowing relying party: %v", err)
 		writeTokenEndpointError(w, httpStatusCode, "invalid_client", err.Error())
 		return
@@ -405,8 +404,6 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 		ActorInfo:        actorInfo,
 
 		// Preserve original RP context
-		LocalRP:  ar.LocalRP,
-		RPNodeID: ar.RPNodeID,
 		FunnelRP: ar.FunnelRP, // Keep original funnel client if it exists
 	}
 
@@ -524,9 +521,6 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 			}
 			tsClaims.Picture = who.UserProfile.ProfilePicURL
 		}
-	}
-	if ar.LocalRP {
-		tsClaims.Issuer = s.loopbackURL
 	}
 
 	// Set azp (authorized party) claim when there are multiple audiences
@@ -798,13 +792,7 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 		resp["iat"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // issued 5 min before expiry
 		resp["nbf"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // not before time (same as iat)
 		resp["token_type"] = "Bearer"
-
-		// Add issuer claim
-		if ar.LocalRP {
-			resp["iss"] = s.loopbackURL
-		} else {
-			resp["iss"] = s.serverURL
-		}
+		resp["iss"] = s.serverURL
 
 		// Add jti if available
 		if ar.JTI != "" {
@@ -872,47 +860,28 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 
 // allowRelyingParty checks if the relying party is allowed to access the token
 // Migrated from legacy/tsidp.go:520-552
-func (ar *AuthRequest) allowRelyingParty(r *http.Request, lc *local.Client) (int, error) {
-	if ar.LocalRP {
-		ra, err := netip.ParseAddrPort(r.RemoteAddr)
-		if err != nil {
-			return http.StatusBadRequest, err
-		}
-		if !ra.Addr().IsLoopback() {
-			return http.StatusForbidden, fmt.Errorf("tsidp: request from non-loopback address")
-		}
-		return http.StatusOK, nil
+func (ar *AuthRequest) allowRelyingParty(r *http.Request) (int, error) {
+	if ar.FunnelRP == nil {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: no relying party configured")
 	}
-	if ar.FunnelRP != nil {
-		clientID, clientSecret, ok := r.BasicAuth()
-		if !ok {
-			clientID = r.FormValue("client_id")
-			clientSecret = r.FormValue("client_secret")
-		}
 
-		if clientID == "" || clientSecret == "" {
-			return http.StatusUnauthorized, fmt.Errorf("tsidp: missing client credentials")
-		}
+	clientID, clientSecret, ok := r.BasicAuth()
+	if !ok {
+		clientID = r.FormValue("client_id")
+		clientSecret = r.FormValue("client_secret")
+	}
 
-		clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(ar.FunnelRP.ID))
-		clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
-		if clientIDcmp != 1 {
-			return http.StatusBadRequest, fmt.Errorf("tsidp: client_id mismatch")
-		}
-		if clientSecretcmp != 1 {
-			return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret: [%s] [%s]", clientID, clientSecret)
-		}
-		return http.StatusOK, nil
+	if clientID == "" || clientSecret == "" {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: missing client credentials")
 	}
-	if lc == nil {
-		return http.StatusInternalServerError, fmt.Errorf("tsidp: no local client available for node validation")
+
+	clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(ar.FunnelRP.ID))
+	clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
+	if clientIDcmp != 1 {
+		return http.StatusBadRequest, fmt.Errorf("tsidp: client_id mismatch")
 	}
-	who, err := lc.WhoIs(r.Context(), r.RemoteAddr)
-	if err != nil {
-		return http.StatusInternalServerError, fmt.Errorf("tsidp: error getting WhoIs: %w", err)
-	}
-	if ar.RPNodeID != who.Node.ID {
-		return http.StatusForbidden, fmt.Errorf("tsidp: token for different node")
+	if clientSecretcmp != 1 {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret: [%s] [%s]", clientID, clientSecret)
 	}
 	return http.StatusOK, nil
 }

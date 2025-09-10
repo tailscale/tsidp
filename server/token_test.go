@@ -353,7 +353,6 @@ func TestIntrospectWithResources(t *testing.T) {
 func TestIntrospectionRFC7662Compliance(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
-		loopbackURL:   "http://localhost:8080",
 		accessToken:   make(map[string]*AuthRequest),
 		funnelClients: make(map[string]*FunnelClient),
 	}
@@ -1133,16 +1132,19 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 // - renamed authRequest -> AuthRequest
 func TestServeToken(t *testing.T) {
 	tests := []struct {
-		name        string
-		caps        tailcfg.PeerCapMap
-		method      string
-		grantType   string
-		code        string
-		omitCode    bool
-		redirectURI string
-		remoteAddr  string
-		expectError bool
-		expected    map[string]any
+		name           string
+		caps           tailcfg.PeerCapMap
+		method         string
+		grantType      string
+		code           string
+		omitCode       bool
+		redirectURI    string
+		remoteAddr     string
+		expectError    bool
+		expected       map[string]any
+		clientID       string
+		clientSecret   string
+		useCredentials bool
 	}{
 		{
 			name:        "GET not allowed",
@@ -1189,12 +1191,15 @@ func TestServeToken(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "extra claim included",
-			method:      "POST",
-			grantType:   "authorization_code",
-			redirectURI: "https://rp.example.com/callback",
-			code:        "valid-code",
-			remoteAddr:  "127.0.0.1:12345",
+			name:           "extra claim included",
+			method:         "POST",
+			grantType:      "authorization_code",
+			redirectURI:    "https://rp.example.com/callback",
+			code:           "extra-claim-included",
+			remoteAddr:     "127.0.0.1:12345",
+			clientID:       "test-client",
+			clientSecret:   "test-secret",
+			useCredentials: true,
 			caps: tailcfg.PeerCapMap{
 				tailcfg.PeerCapabilityTsIDP: {
 					mustMarshalJSON(t, capRule{
@@ -1257,12 +1262,27 @@ func TestServeToken(t *testing.T) {
 			s := &IDPServer{
 				code: map[string]*AuthRequest{
 					"valid-code": {
-						ClientID:    "client-id",
+						ClientID:    "test-client",
 						Nonce:       "nonce123",
 						RedirectURI: "https://rp.example.com/callback",
 						ValidTill:   now.Add(5 * time.Minute),
 						RemoteUser:  remoteUser,
-						LocalRP:     true,
+					},
+
+					// only for the extra claim included test
+					// which requires checking a client_id and client_secret
+					"extra-claim-included": {
+						ClientID:    "test-client",
+						Nonce:       "nonce123",
+						RedirectURI: "https://rp.example.com/callback",
+						ValidTill:   now.Add(5 * time.Minute),
+						RemoteUser:  remoteUser,
+						FunnelRP: &FunnelClient{
+							Name:         "A Test Client",
+							ID:           "test-client",
+							Secret:       "test-secret",
+							RedirectURIs: []string{"https://rp.example.com"},
+						},
 					},
 				},
 			}
@@ -1274,6 +1294,12 @@ func TestServeToken(t *testing.T) {
 			form.Set("redirect_uri", tt.redirectURI)
 			if !tt.omitCode {
 				form.Set("code", tt.code)
+			}
+
+			if tt.useCredentials {
+				t.Log("Sending credentials") // Debug log"
+				form.Set("client_id", tt.clientID)
+				form.Set("client_secret", tt.clientSecret)
 			}
 
 			req := httptest.NewRequest(tt.method, "/token", strings.NewReader(form.Encode()))
@@ -1468,7 +1494,6 @@ func TestServeTokenWithClientValidation(t *testing.T) {
 					RedirectURI: tt.authRequestRedirect,
 					ValidTill:   now.Add(5 * time.Minute),
 					RemoteUser:  remoteUser,
-					LocalRP:     false,
 					FunnelRP:    funnelClientPtr,
 				}
 			}
