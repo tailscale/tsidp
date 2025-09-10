@@ -31,7 +31,7 @@ cd tsidp
 Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
 
 1. Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing tag or create a new one.
-2. Run `$ TS_AUTH_KEY=YOUR_TAILSCALE_AUTHKEY TAILSCALE_USE_WIP_CODE=1 TSNET_FORCE_LOGIN=1 go run .`
+2. Run `TS_AUTH_KEY=YOUR_TAILSCALE_AUTHKEY TAILSCALE_USE_WIP_CODE=1 TSNET_FORCE_LOGIN=1 go run .`
 
 Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
 
@@ -41,7 +41,12 @@ tsidp can be used as IdP server for any application that supports custom OIDC pr
 
 *Note: If you're running the application(s) inside of your tailnet, you wont need to do anything extra when running tsidp. If you'd like to use tsidp to login to a SaaS application outside of your tailnet, you'll need to run tsidp with `--funnel` enabled.*
 
- - TODO — Need to add the initial list. Existing proxmox instructions wont work.
+- (TODO) Proxmox
+- (TODO) Grafana
+- (TODO) open-webui
+- (TODO) Jellyfin
+- (TODO) Salesforce
+- (TODO) ...
 
 ## MCP Configuration Guides
 
