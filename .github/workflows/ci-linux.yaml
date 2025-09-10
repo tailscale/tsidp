@@ -25,10 +25,7 @@ jobs:
     # Only run in this linux based runner
     - name: Check Formatting
       run: |
-        if [ "$(gofmt -l . | grep -v 'event/.*_test.go' | wc -l)" -gt 0 ]; then
-          gofmt -l . | grep -v 'event/.*_test.go'
-          exit 1
-        fi
+        gofmt -l .
 
     - name: Run go test
       run: make test
