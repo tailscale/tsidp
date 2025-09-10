@@ -44,6 +44,7 @@ var (
 	flagHostname           = flag.String("hostname", "idp", "tsnet hostname to use instead of idp")
 	flagDir                = flag.String("dir", "", "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", false, "enable OIDC STS token exchange support")
+	flagEnableDebug        = flag.Bool("enable-debug", false, "enable debug printing of requests to the server")
 )
 
 // main initializes and starts the tsidp server
@@ -185,11 +186,16 @@ func main() {
 		}
 	}()
 
+	var srvHandler http.Handler = srv
+	if *flagEnableDebug {
+		srvHandler = debugPrintRequest(srv) // Wrap the server with debug
+	}
+
 	for _, ln := range lns {
 		httpServer := http.Server{
 
 			// TODO: THIS IS ONLY FOR DEBUGGING
-			Handler: srv,
+			Handler: srvHandler,
 			ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 				return context.WithValue(ctx, server.CtxConn{}, c)
 			},
@@ -211,4 +217,44 @@ func main() {
 		log.Fatalf("watcher error: %v", err)
 		return
 	}
+}
+
+func debugPrintRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Print request details
+		fmt.Printf("[DEBUG REQUEST] %s %s %s\n", r.Method, r.URL.Path, r.Proto)
+		fmt.Printf("[DEBUG REQUEST] Host: %s\n", r.Host)
+		fmt.Printf("[DEBUG REQUEST] RemoteAddr: %s\n", r.RemoteAddr)
+		fmt.Printf("[DEBUG REQUEST] User-Agent: %s\n", r.UserAgent())
+
+		// Print headers (optional - can be commented out if too verbose)
+		fmt.Printf("[DEBUG REQUEST] Headers:\n")
+		for name, values := range r.Header {
+			for _, value := range values {
+				fmt.Printf("[DEBUG REQUEST]   %s: %s\n", name, value)
+			}
+		}
+
+		fmt.Println("[DEBUG REQUEST] ---")
+
+		// Create a custom ResponseWriter to capture the status code
+		rw := &responseWrapper{ResponseWriter: w}
+
+		// Call the next handler
+		next.ServeHTTP(rw, r)
+
+		// Print response status code
+		fmt.Printf("[DEBUG RESPONSE] Status: %d %s\n", rw.statusCode, http.StatusText(rw.statusCode))
+		fmt.Println("[DEBUG RESPONSE] ---")
+	})
+}
+
+type responseWrapper struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWrapper) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
