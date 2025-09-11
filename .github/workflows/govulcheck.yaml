@@ -1,0 +1,22 @@
+name: Run govulncheck
+on:
+   schedule:
+    - cron: "0 12 * * *" # 8am EST / 10am PST / 12pm UTC
+   workflow_dispatch: # allow manual trigger for testing
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Scan source code for known vulnerabilities
+        run: govulncheck -test ./...
