@@ -219,7 +219,7 @@ func main() {
 			fmt.Printf("Redirect response did not have a valid Location header: %v", err)
 			os.Exit(1)
 		}
-		fmt.Println("✅ Success: Provider sent a redirect. This is unexpected for this flow, but proceeding.")
+		fmt.Println("✅ Success: Provider sent a redirect. This is expected for the tsidp flow.")
 		redirectURLStr = location.String()
 	} else if resp.StatusCode == 200 {
 		// This is the expected outcome. The provider is waiting for a user to log in.
