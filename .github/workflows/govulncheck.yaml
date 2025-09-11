@@ -5,7 +5,7 @@ on:
   workflow_dispatch: # allow manual trigger for testing
   pull_request:
     paths:
-      - ".github/workflows/govulncheck.yml"
+      - ".github/workflows/govulncheck.yaml"
 jobs:
   govulncheck:
     runs-on: ubuntu-latest
