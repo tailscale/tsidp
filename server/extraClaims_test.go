@@ -339,7 +339,7 @@ func TestExtraClaims(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			claims, err := withExtraClaims(tt.claim, tt.extraClaims)
+			claims, err := withExtraClaims(tt.claim.toMap(), tt.extraClaims)
 			if err != nil && !tt.expectError {
 				t.Fatalf("claim.withExtraClaims() unexpected error = %v", err)
 			} else if err == nil && tt.expectError {

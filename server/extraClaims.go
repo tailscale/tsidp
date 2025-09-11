@@ -4,7 +4,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 )
@@ -21,19 +20,7 @@ import (
 //
 // Returns the merged claims map or an error if any protected claim is violated or JSON (un)marshaling fails.
 // Migrated from legacy/tsidp.go:877-919
-func withExtraClaims(v any, rules []capRule) (map[string]any, error) {
-	// Marshal the static struct
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal into a generic map
-	var claimMap map[string]any
-	if err := json.Unmarshal(data, &claimMap); err != nil {
-		return nil, err
-	}
-
+func withExtraClaims(claimMap map[string]any, rules []capRule) (map[string]any, error) {
 	// Convert views.Slice to a map[string]struct{} for efficient lookup
 	protected := make(map[string]struct{}, len(openIDSupportedClaims.AsSlice()))
 	for _, claim := range openIDSupportedClaims.AsSlice() {
