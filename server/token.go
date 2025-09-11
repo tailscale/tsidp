@@ -66,7 +66,8 @@ type tailscaleClaims struct {
 	UserName string `json:"username,omitempty"`
 }
 
-// toMap converts tailscaleClaims to a map[string]any, using JSON struct tag names
+// toMap converts tailscaleClaims to a map[string]any using JSON struct tag names
+// this is more reliable than marshaling to JSON for claims merging
 func (tc tailscaleClaims) toMap() map[string]any {
 	m := make(map[string]any)
 
@@ -77,7 +78,7 @@ func (tc tailscaleClaims) toMap() map[string]any {
 	if tc.Claims.Subject != "" {
 		m["sub"] = tc.Claims.Subject
 	}
-	if tc.Claims.Audience != nil && len(tc.Claims.Audience) > 0 {
+	if len(tc.Claims.Audience) > 0 {
 		m["aud"] = tc.Claims.Audience
 	}
 	if tc.Claims.Expiry != nil {

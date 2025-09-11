@@ -25,7 +25,7 @@ type userInfo struct {
 }
 
 // toMap converts userInfo to a map[string]any, using JSON struct tag names
-// this is more reliable when marshaling to JSON for claims merging
+// this is more reliable than marshaling to JSON for claims merging
 func (ui userInfo) toMap() map[string]any {
 	m := make(map[string]any)
 
