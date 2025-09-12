@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -221,13 +222,20 @@ func main() {
 
 func debugPrintRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Read and store the request body
+		var requestBody []byte
+		if r.Body != nil {
+			requestBody, _ = io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewBuffer(requestBody)) // Restore body for downstream handlers
+		}
+
 		// Print request details
 		fmt.Printf("[DEBUG REQUEST] %s %s %s\n", r.Method, r.URL.Path, r.Proto)
 		fmt.Printf("[DEBUG REQUEST] Host: %s\n", r.Host)
 		fmt.Printf("[DEBUG REQUEST] RemoteAddr: %s\n", r.RemoteAddr)
 		fmt.Printf("[DEBUG REQUEST] User-Agent: %s\n", r.UserAgent())
 
-		// Print headers (optional - can be commented out if too verbose)
+		// Print request headers
 		fmt.Printf("[DEBUG REQUEST] Headers:\n")
 		for name, values := range r.Header {
 			for _, value := range values {
@@ -235,16 +243,44 @@ func debugPrintRequest(next http.Handler) http.Handler {
 			}
 		}
 
+		// Print request body if present
+		if len(requestBody) > 0 {
+			fmt.Printf("[DEBUG REQUEST] Body:\n%s\n", string(requestBody))
+		} else {
+			fmt.Printf("[DEBUG REQUEST] Body: (empty)\n")
+		}
+
 		fmt.Println("[DEBUG REQUEST] ---")
 
-		// Create a custom ResponseWriter to capture the status code
-		rw := &responseWrapper{ResponseWriter: w}
+		// Create a custom ResponseWriter to capture status code and body
+		rw := &responseWrapper{
+			ResponseWriter: w,
+			statusCode:     200, // Default status code
+			body:           &bytes.Buffer{},
+		}
 
 		// Call the next handler
 		next.ServeHTTP(rw, r)
 
 		// Print response status code
 		fmt.Printf("[DEBUG RESPONSE] Status: %d %s\n", rw.statusCode, http.StatusText(rw.statusCode))
+
+		// Print response headers (captured from the original ResponseWriter)
+		fmt.Printf("[DEBUG RESPONSE] Headers:\n")
+		for name, values := range w.Header() {
+			for _, value := range values {
+				fmt.Printf("[DEBUG RESPONSE]   %s: %s\n", name, value)
+			}
+		}
+
+		// Print response body
+		responseBody := rw.body.Bytes()
+		if len(responseBody) > 0 {
+			fmt.Printf("[DEBUG RESPONSE] Body:\n%s\n", string(responseBody))
+		} else {
+			fmt.Printf("[DEBUG RESPONSE] Body: (empty)\n")
+		}
+
 		fmt.Println("[DEBUG RESPONSE] ---")
 	})
 }
@@ -252,9 +288,20 @@ func debugPrintRequest(next http.Handler) http.Handler {
 type responseWrapper struct {
 	http.ResponseWriter
 	statusCode int
+	body       *bytes.Buffer
 }
 
 func (rw *responseWrapper) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *responseWrapper) Write(b []byte) (int, error) {
+	// Capture the response body
+	if rw.body != nil {
+		rw.body.Write(b)
+	}
+
+	// Write to the original response writer
+	return rw.ResponseWriter.Write(b)
 }
