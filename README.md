@@ -17,28 +17,7 @@
 
 ### (Recommended) Using the pre-built image
 
-The easiest way to run tsidp is using a pre-built image.
-
-Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
-
-1. Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
-
-```bash
-# Run tsidp with a persistent volume to store state
-docker run -d \
-  --name tsidp \
-  -p 443:443 \
-  -e TS_AUTHKEY=YOUR_TAILSCALE_AUTHKEY \
-  -e TAILSCALE_USE_WIP_CODE=1 \
-  -v tsidp-data:/var/lib/tsidp \
-  ghcr.io/tailscale/tsidp:latest \
-  tsidp --hostname=idp-test-docker --dir=/var/lib/tsidp
-```
-
-Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
-
-> [!NOTE]
-> If you're running your container for the first time with this hostname, you may not be able to access tsidp even though it is running. It takes a few minutes for the TLS certificate to generate.
+To be updated.
 
 ### Other ways to build & run tsidp
 
