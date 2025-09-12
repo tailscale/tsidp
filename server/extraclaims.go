@@ -4,36 +4,19 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 )
 
-// withExtraClaims merges flattened extra claims from a list of capRule into the provided struct v,
+// withExtraClaims merges flattened extra claims from a list of capRule into the provided map[string]any,
 // returning a map[string]any that combines both sources.
-//
-// v is any struct whose fields represent static claims; it is first marshaled to JSON, then unmarshalled into a generic map.
-// rules is a slice of capRule objects that may define additional (extra) claims to merge.
 //
 // These extra claims are flattened and merged into the base map unless they conflict with protected claims.
 // Claims defined in openIDSupportedClaims are considered protected and cannot be overwritten.
 // If an extra claim attempts to overwrite a protected claim, an error is returned.
 //
 // Returns the merged claims map or an error if any protected claim is violated or JSON (un)marshaling fails.
-// Migrated from legacy/tsidp.go:877-919
-func withExtraClaims(v any, rules []capRule) (map[string]any, error) {
-	// Marshal the static struct
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal into a generic map
-	var claimMap map[string]any
-	if err := json.Unmarshal(data, &claimMap); err != nil {
-		return nil, err
-	}
-
+func withExtraClaims(claimMap map[string]any, rules []capRule) (map[string]any, error) {
 	// Convert views.Slice to a map[string]struct{} for efficient lookup
 	protected := make(map[string]struct{}, len(openIDSupportedClaims.AsSlice()))
 	for _, claim := range openIDSupportedClaims.AsSlice() {

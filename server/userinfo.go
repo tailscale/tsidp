@@ -24,6 +24,31 @@ type userInfo struct {
 	Username string `json:"username,omitempty"`
 }
 
+// toMap converts userInfo to a map[string]any, using JSON struct tag names
+// this is more reliable than marshaling to JSON for claims merging
+func (ui userInfo) toMap() map[string]any {
+	m := make(map[string]any)
+
+	// Sub is always included (required field)
+	m["sub"] = ui.Sub
+
+	// Add optional fields only if they have values
+	if ui.Name != "" {
+		m["name"] = ui.Name
+	}
+	if ui.Email != "" {
+		m["email"] = ui.Email
+	}
+	if ui.Picture != "" {
+		m["picture"] = ui.Picture
+	}
+	if ui.Username != "" {
+		m["username"] = ui.Username
+	}
+
+	return m
+}
+
 // serveUserInfo handles the /userinfo endpoint
 // Migrated from legacy/tsidp.go:694-769
 func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +109,7 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	userInfoMap, err := withExtraClaims(ui, filtered)
+	userInfoMap, err := withExtraClaims(ui.toMap(), filtered)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

@@ -66,6 +66,69 @@ type tailscaleClaims struct {
 	UserName string `json:"username,omitempty"`
 }
 
+// toMap converts tailscaleClaims to a map[string]any using JSON struct tag names
+// this is more reliable than marshaling to JSON for claims merging
+func (tc tailscaleClaims) toMap() map[string]any {
+	m := make(map[string]any)
+
+	// Add embedded jwt.Claims fields using their JSON tag names
+	if tc.Claims.Issuer != "" {
+		m["iss"] = tc.Claims.Issuer
+	}
+	if tc.Claims.Subject != "" {
+		m["sub"] = tc.Claims.Subject
+	}
+	if len(tc.Claims.Audience) > 0 {
+		m["aud"] = tc.Claims.Audience
+	}
+	if tc.Claims.Expiry != nil {
+		m["exp"] = tc.Claims.Expiry
+	}
+	if tc.Claims.NotBefore != nil {
+		m["nbf"] = tc.Claims.NotBefore
+	}
+	if tc.Claims.IssuedAt != nil {
+		m["iat"] = tc.Claims.IssuedAt
+	}
+	if tc.Claims.ID != "" {
+		m["jti"] = tc.Claims.ID
+	}
+
+	// Add tailscale-specific fields
+	if tc.Nonce != "" {
+		m["nonce"] = tc.Nonce
+	}
+	m["key"] = tc.Key
+	m["addresses"] = tc.Addresses
+	m["nid"] = tc.NodeID
+	if tc.NodeName != "" {
+		m["node"] = tc.NodeName
+	}
+	if tc.Tailnet != "" {
+		m["tailnet"] = tc.Tailnet
+	}
+	if tc.Email != "" {
+		m["email"] = tc.Email
+	}
+	if tc.UserID != 0 {
+		m["uid"] = tc.UserID
+	}
+	if tc.PreferredUsername != "" {
+		m["preferred_username"] = tc.PreferredUsername
+	}
+	if tc.Picture != "" {
+		m["picture"] = tc.Picture
+	}
+	if tc.AuthorizedParty != "" {
+		m["azp"] = tc.AuthorizedParty
+	}
+	if tc.UserName != "" {
+		m["username"] = tc.UserName
+	}
+
+	return m
+}
+
 // Capability rule types
 // Migrated from legacy/tsidp.go:779-790
 
@@ -536,7 +599,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 		return
 	}
 
-	tsClaimsWithExtra, err := withExtraClaims(tsClaims, rules)
+	tsClaimsWithExtra, err := withExtraClaims(tsClaims.toMap(), rules)
 	if err != nil {
 		//log.Printf("tsidp: failed to merge extra claims: %v", err)
 		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "failed to merge extra claims")
