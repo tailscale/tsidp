@@ -25,8 +25,6 @@ func main() {
 
 	var httpListenAddr string
 	flag.StringVar(&httpListenAddr, "http", "localhost:9933", "http listen address")
-<<<<<<< Updated upstream
-=======
 
 	var oauthResource string
 	flag.StringVar(&oauthResource, "resource", "", "sets resource URL, otherwise defaults to http listener value")
@@ -34,7 +32,6 @@ func main() {
 	var enableDebug bool
 	flag.BoolVar(&enableDebug, "enable-debug", false, "enable debug mode (default: false)")
 
->>>>>>> Stashed changes
 	flag.Parse()
 
 	if tsidpFlag == "" {
@@ -52,21 +49,12 @@ func main() {
 		os.Exit(1)
 	}
 
-<<<<<<< Updated upstream
-	server := mcp.NewServer(&mcp.Implementation{Name: "whoa-sdk", Version: "v0.0.1"}, nil)
-	mcp.AddTool(server, &mcp.Tool{Name: "sum", Description: "Adds two numbers"}, Sum)
-	mcp.AddTool(server, &mcp.Tool{Name: "tokeninfo", Description: "Shows token info"}, TokenInfo)
-
-	streamHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return server
-=======
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "whoa-sdk", Version: "v0.0.1"}, nil)
 	mcp.AddTool(mcpServer, &mcp.Tool{Name: "sum", Description: "Adds two numbers"}, Sum)
 	mcp.AddTool(mcpServer, &mcp.Tool{Name: "tokeninfo", Description: "Shows token info"}, TokenInfo)
 
 	streamHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return mcpServer
->>>>>>> Stashed changes
 	}, nil)
 
 	// tsidp sends an opaque token so we need to call the /introspection endpoint to validate it
@@ -78,29 +66,20 @@ func main() {
 		Scopes:              []string{"email", "profile"}, /* scopes required by this server */
 	})(streamHandler)
 
-<<<<<<< Updated upstream
-=======
 	mux := http.NewServeMux()
 	if oauthResource == "" {
 		oauthResource = "http://" + httpListenAddr
 	}
 	mux.HandleFunc("/.well-known/oauth-protected-resource", oauthProtectedResourceHandler(idpURL, oauthResource))
 
->>>>>>> Stashed changes
 	/**
 	 * Register the HTTP handlers
 	 * - /mcp
 	 * - /.well-known/oauth-protected-resource 	(RFC9728)
 	 * - / (catch all fall through for debugging)
 	 */
-<<<<<<< Updated upstream
-	http.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("processing /mcp")
-
-=======
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Handling MCP: " + r.Method)
->>>>>>> Stashed changes
 		if r.Method == "OPTIONS" {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", "*")
@@ -112,20 +91,6 @@ func main() {
 		authWrappedHandler.ServeHTTP(w, r)
 	})
 
-<<<<<<< Updated upstream
-	http.HandleFunc("/.well-known/oauth-protected-resource", oauthProtectedResourceHandler(idpURL, "http://"+httpListenAddr))
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "OK\n")
-
-		// log the fall through ... helpful for identifying unimplemented endpoints
-		fmt.Println(r.Method, r.URL.Path) // Log the request method and path
-	})
-
-	fmt.Printf("MCP server listening at %s\n", httpListenAddr)
-	http.ListenAndServe(httpListenAddr, nil)
-=======
 	var srvHandler http.Handler = mux
 	if enableDebug {
 		srvHandler = debugPrintRequest(mux)
@@ -139,17 +104,12 @@ func main() {
 	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
->>>>>>> Stashed changes
 }
 
 // createVerifier creates a token verifier function that validates tokens.
 // since tsidp sends an opaque token we need to call the /introspection endpoint to validate it.
 func createVerifier(introspectionEndpoint string) func(context.Context, string, *http.Request) (*auth.TokenInfo, error) {
-<<<<<<< Updated upstream
-	return func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
-=======
 	return func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
->>>>>>> Stashed changes
 
 		fmt.Println("IN Verifier, the token: ", token)
 
@@ -190,11 +150,7 @@ func createVerifier(introspectionEndpoint string) func(context.Context, string, 
 		}
 		expirationTime := time.Unix(int64(expiration), 0)
 
-<<<<<<< Updated upstream
-		fmt.Println("Expirtation time", expirationTime)
-=======
 		fmt.Println("Expiration time", expirationTime)
->>>>>>> Stashed changes
 		return &auth.TokenInfo{
 			Scopes: []string{"email", "profile"},
 			// Expiration is far, far in the future.
@@ -312,8 +268,6 @@ func Sum(ctx context.Context, req *mcp.CallToolRequest, args SumParams) (*mcp.Ca
 		},
 	}, nil, nil
 }
-<<<<<<< Updated upstream
-=======
 
 func debugPrintRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -400,4 +354,3 @@ func (rw *responseWrapper) Write(b []byte) (int, error) {
 	// Write to the original response writer
 	return rw.ResponseWriter.Write(b)
 }
->>>>>>> Stashed changes
