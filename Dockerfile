@@ -23,6 +23,5 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/tsidp-server .
 
-ENV TAILSCALE_USE_WIP_CODE=1
 # Run the binary
 ENTRYPOINT ["./tsidp-server"]
