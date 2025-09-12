@@ -12,13 +12,63 @@
 
 ## Running tsidp
 
+### (Recommended) Using the pre-built image
+
 The easiest way to run tsidp is using a pre-built image.
 
-### (Recommended) Running the tsidp image
+Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
 
-TODO
+1. Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
 
-### Running tsidp directly
+```bash
+# Run tsidp with a persistent volume to store state
+docker run -d \
+  --name tsidp \
+  -p 443:443 \
+  -e TS_AUTHKEY=YOUR_TAILSCALE_AUTHKEY \
+  -e TAILSCALE_USE_WIP_CODE=1 \
+  -v tsidp-data:/var/lib/tsidp \
+  ghcr.io/tailscale/tsidp:latest \
+  tsidp --hostname=idp-test-docker --dir=/var/lib/tsidp
+```
+
+Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
+
+> [!NOTE]
+> If you're running your container for the first time with this hostname, you may not be able to access tsidp even though it is running. It takes a few minutes for the TLS certificate to generate.
+
+### Other ways to build & run tsidp
+
+<details>
+<summary>Building your own container</summary>
+
+Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
+
+1. Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
+
+```bash
+# Build the container using the included Dockerfile
+docker build -t tsidp .
+
+# Run tsidp with a persistent volume to store state
+docker run -d \
+  --name tsidp \
+  -p 443:443 \
+  -e TS_AUTHKEY=YOUR_TAILSCALE_AUTHKEY \
+  -e TAILSCALE_USE_WIP_CODE=1 \
+  -v tsidp-data:/var/lib/tsidp \
+  tsidp --hostname=idp-test-docker --dir=/var/lib/tsidp
+```
+
+Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
+
+> [!NOTE]
+> If you're running your container for the first time with this hostname, you may not be able to access tsidp even though it is running. It takes a few minutes for the TLS certificate to generate.
+
+</details>
+
+<details>
+<summary>Using Go directly</summary>
 
 If you'd like to build tsidp and / or run it directly you can do the following:
 
@@ -30,16 +80,22 @@ cd tsidp
 
 Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
 
-1. Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing tag or create a new one.
+1. Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
 2. Run `TS_AUTH_KEY=YOUR_TAILSCALE_AUTHKEY TAILSCALE_USE_WIP_CODE=1 TSNET_FORCE_LOGIN=1 go run .`
 
 Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
+
+> [!NOTE]
+> If you're running your container for the first time with this hostname, you may not be able to access tsidp even though it is running. It takes a few minutes for the TLS certificate to generate.
+
+</details>
 
 ## Application Configuration Guides
 
 tsidp can be used as IdP server for any application that supports custom OIDC providers.
 
-*Note: If you're running the application(s) inside of your tailnet, you wont need to do anything extra when running tsidp. If you'd like to use tsidp to login to a SaaS application outside of your tailnet, you'll need to run tsidp with `--funnel` enabled.*
+> [!IMPORTANT]
+> Note: If you'd like to use tsidp to login to a SaaS application outside of your tailnet rather than a self-hosted app inside of your tailnet, you'll need to run tsidp with `--funnel` enabled.
 
 - (TODO) Proxmox
 - (TODO) Grafana
