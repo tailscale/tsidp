@@ -144,7 +144,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 				if _, ok := rawResp["client_secret"]; !ok {
 					t.Error("expected 'client_secret' field in response, not found")
 				}
-				if _, ok := rawResp["name"]; !ok {
+				if _, ok := rawResp["client_name"]; !ok {
 					t.Error("expected 'name' field in response, not found")
 				}
 				if _, ok := rawResp["redirect_uris"]; !ok {
@@ -158,7 +158,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 				if clientSecret, ok := rawResp["client_secret"].(string); !ok || clientSecret == "" {
 					t.Error("client_secret should be a non-empty string")
 				}
-				if clientName, ok := rawResp["name"].(string); !ok || clientName != "Test Client" {
+				if clientName, ok := rawResp["client_name"].(string); !ok || clientName != "Test Client" {
 					t.Errorf("expected name to be 'Test Client', got %v", rawResp["name"])
 				}
 			},

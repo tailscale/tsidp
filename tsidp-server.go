@@ -235,6 +235,16 @@ func debugPrintRequest(next http.Handler) http.Handler {
 		fmt.Printf("[DEBUG REQUEST] RemoteAddr: %s\n", r.RemoteAddr)
 		fmt.Printf("[DEBUG REQUEST] User-Agent: %s\n", r.UserAgent())
 
+		// Print query parameters
+		if len(r.URL.Query()) > 0 {
+			fmt.Printf("[DEBUG REQUEST] Query Parameters:\n")
+			for name, values := range r.URL.Query() {
+				for _, value := range values {
+					fmt.Printf("[DEBUG REQUEST]   %s: %s\n", name, value)
+				}
+			}
+		}
+
 		// Print request headers
 		fmt.Printf("[DEBUG REQUEST] Headers:\n")
 		for name, values := range r.Header {

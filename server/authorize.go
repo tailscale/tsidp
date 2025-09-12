@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/util/mak"
@@ -26,7 +27,9 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tsidp: unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	uq := r.URL.Query()
+	state := uq.Get("state")
 
 	redirectURI := uq.Get("redirect_uri")
 	if redirectURI == "" {
@@ -90,6 +93,36 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 		FunnelRP:    funnelClient, // Store the validated client
 	}
 
+	// Parse space-delimited scopes
+	if scopeParam := uq.Get("scope"); scopeParam != "" {
+		ar.Scopes = strings.Fields(scopeParam)
+	}
+
+	// Validate scopes
+	validatedScopes, err := s.validateScopes(ar.Scopes)
+	if err != nil {
+		redirectAuthError(w, r, redirectURI, "invalid_scope", fmt.Sprintf("invalid scope: %v", err), state)
+		return
+	}
+	ar.Scopes = validatedScopes
+
+	// Handle PKCE parameters (RFC 7636)
+	if codeChallenge := uq.Get("code_challenge"); codeChallenge != "" {
+		ar.CodeChallenge = codeChallenge
+
+		// code_challenge_method defaults to "plain" if not specified
+		ar.CodeChallengeMethod = uq.Get("code_challenge_method")
+		if ar.CodeChallengeMethod == "" {
+			ar.CodeChallengeMethod = "plain"
+		}
+
+		// Validate the code_challenge_method
+		if ar.CodeChallengeMethod != "plain" && ar.CodeChallengeMethod != "S256" {
+			redirectAuthError(w, r, redirectURI, "invalid_request", "unsupported code_challenge_method", state)
+			return
+		}
+	}
+
 	s.mu.Lock()
 	mak.Set(&s.code, code, ar)
 	s.mu.Unlock()
@@ -137,4 +170,27 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	}
 
 	return validatedScopes, nil
+}
+
+// redirectAuthError redirects to the client's redirect_uri with error parameters
+// per RFC 6749 Section 4.1.2.1
+func redirectAuthError(w http.ResponseWriter, r *http.Request, redirectURI, errorCode, errorDescription, state string) {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		// If redirect URI is invalid, return error directly
+		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
+		return
+	}
+
+	q := u.Query()
+	q.Set("error", errorCode)
+	if errorDescription != "" {
+		q.Set("error_description", errorDescription)
+	}
+	if state != "" {
+		q.Set("state", state)
+	}
+	u.RawQuery = q.Encode()
+
+	http.Redirect(w, r, u.String(), http.StatusFound)
 }

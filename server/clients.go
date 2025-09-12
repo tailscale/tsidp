@@ -22,7 +22,7 @@ import (
 type FunnelClient struct {
 	ID                      string    `json:"client_id"`
 	Secret                  string    `json:"client_secret,omitempty"`
-	Name                    string    `json:"name,omitempty"`
+	Name                    string    `json:"client_name,omitempty"`
 	RedirectURIs            []string  `json:"redirect_uris"`
 	TokenEndpointAuthMethod string    `json:"token_endpoint_auth_method,omitempty"`
 	GrantTypes              []string  `json:"grant_types,omitempty"`

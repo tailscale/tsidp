@@ -467,6 +467,8 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 		ActorInfo:        actorInfo,
 
 		// Preserve original RP context
+		LocalRP:  ar.LocalRP,
+		RPNodeID: ar.RPNodeID,
 		FunnelRP: ar.FunnelRP, // Keep original funnel client if it exists
 	}
 

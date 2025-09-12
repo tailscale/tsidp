@@ -124,7 +124,7 @@ type JSONWebKeySet struct {
 var (
 	// issuerURL is now set via a command-line flag.
 	issuerURL string
-	
+
 	// stsEnabled determines if STS token exchange should be performed
 	stsEnabled bool
 
@@ -682,6 +682,7 @@ func performTokenExchange(ctx context.Context, subjectToken string) (*STSTokenRe
 	params.Add("audience", clientCreds.ClientID)
 	params.Add("client_id", clientCreds.ClientID)
 	params.Add("client_secret", clientCreds.ClientSecret)
+	params.Add("scope", "openid profile")
 
 	req, err := http.NewRequestWithContext(ctx, "POST", providerMetadata.TokenEndpoint, strings.NewReader(params.Encode()))
 	if err != nil {
@@ -704,5 +705,29 @@ func performTokenExchange(ctx context.Context, subjectToken string) (*STSTokenRe
 	if err := json.NewDecoder(resp.Body).Decode(&stsResponse); err != nil {
 		return nil, err
 	}
+
+	// Validate that the returned token has the required scopes
+	if !validateScopes(stsResponse.Scope, []string{"openid", "email", "profile"}) {
+		return nil, fmt.Errorf("token exchange returned insufficient scopes: got %s", stsResponse.Scope)
+	}
+
 	return &stsResponse, nil
+}
+
+// Helper function to validate scopes
+func validateScopes(returnedScope string, requiredScopes []string) bool {
+	returnedScopes := strings.Fields(returnedScope)
+	for _, required := range requiredScopes {
+		found := false
+		for _, returned := range returnedScopes {
+			if returned == required {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
