@@ -379,7 +379,7 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 
 	// Check ACL grant for STS token exchange
 	who := ar.RemoteUser
-	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "test-tailscale.com/idp/sts/openly-allow")
+	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "tailscale.com/cap/tsidp")
 	if err != nil {
 		//log.Printf("tsidp: failed to unmarshal STS capability: %v", err)
 		writeTokenEndpointError(w, http.StatusForbidden, "access_denied", fmt.Sprintf("failed to unmarshal STS capability: %s", err.Error()))
@@ -695,7 +695,7 @@ func (s *IDPServer) identifyClient(r *http.Request) string {
 // Migrated from legacy/tsidp.go:426-472
 func (s *IDPServer) validateResourcesForUser(who *apitype.WhoIsResponse, requestedResources []string) ([]string, error) {
 	// Check ACL grant using the same capability as we would use for STS token exchange
-	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "test-tailscale.com/idp/sts/openly-allow")
+	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "tailscale.com/cap/tsidp")
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal capability: %w", err)
 	}

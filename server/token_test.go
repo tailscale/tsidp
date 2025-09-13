@@ -187,7 +187,7 @@ func TestResourceIndicators(t *testing.T) {
 						DisplayName: "Test User",
 					},
 					CapMap: tailcfg.PeerCapMap{
-						"test-tailscale.com/idp/sts/openly-allow": marshalCapRules(tt.capMapRules),
+						"tailscale.com/cap/tsidp": marshalCapRules(tt.capMapRules),
 					},
 				},
 				ValidTill: time.Now().Add(5 * time.Minute),
@@ -875,7 +875,7 @@ func TestRefreshTokenWithResources(t *testing.T) {
 						DisplayName: "Test User",
 					},
 					CapMap: tailcfg.PeerCapMap{
-						"test-tailscale.com/idp/sts/openly-allow": marshalCapRules(tt.capMapRules),
+						"tailscale.com/cap/tsidp": marshalCapRules(tt.capMapRules),
 					},
 				},
 			}
