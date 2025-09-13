@@ -37,6 +37,7 @@ docker run -d \
   --name tsidp \
   -p 443:443 \
   -e TS_AUTHKEY=YOUR_TAILSCALE_AUTHKEY \
+  -e TSNET_FORCE_LOGIN=1
   -e TAILSCALE_USE_WIP_CODE=1 \
   -v tsidp-data:/var/lib/tsidp \
   tsidp --hostname=idp-test-docker --dir=/var/lib/tsidp
