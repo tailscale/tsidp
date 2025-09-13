@@ -3,7 +3,7 @@
 The verifier is meant to be run like so:
 
 ```
-$ go run . -idp https://idp.ts0000.ts.net
+$ go run . -sts -idp https://idp.ts0000.ts.net
 ```
 
 ## Output Example
