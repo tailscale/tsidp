@@ -139,6 +139,10 @@ var (
 	// Nonce and State are used to prevent CSRF and replay attacks.
 	lastState string
 	lastNonce string
+
+	// PKCE parameters for RFC 7636
+	codeVerifier  string
+	codeChallenge string
 )
 
 // --- Main Application Logic ---
@@ -187,6 +191,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Generate PKCE parameters (RFC 7636)
+	codeVerifier, err = generateCodeVerifier()
+	if err != nil {
+		fmt.Printf("Failed to generate code verifier: %v", err)
+		os.Exit(1)
+	}
+	codeChallenge = generateCodeChallenge(codeVerifier)
+	fmt.Printf("Generated PKCE parameters: code_verifier=%s..., code_challenge=%s...\n", codeVerifier[:20], codeChallenge[:20])
+
 	authURL, err := url.Parse(providerMetadata.AuthorizationEndpoint)
 	if err != nil {
 		fmt.Printf("Invalid authorization endpoint URL: %v", err)
@@ -200,10 +213,13 @@ func main() {
 	params.Add("redirect_uri", redirectURI)
 	params.Add("state", lastState)
 	params.Add("nonce", lastNonce)
+	// Add PKCE parameters
+	params.Add("code_challenge", codeChallenge)
+	params.Add("code_challenge_method", "S256")
 	authURL.RawQuery = params.Encode()
 	finalAuthURL := authURL.String()
 
-	fmt.Printf("Generated Authorization URL with state=%s and nonce=%s\n", lastState, lastNonce)
+	fmt.Printf("Generated Authorization URL with state=%s, nonce=%s, and PKCE\n", lastState, lastNonce)
 	fmt.Println("\nAttempting to GET the authorization URL directly...")
 
 	// Create a client that does not follow redirects automatically.
@@ -423,6 +439,8 @@ func exchangeCodeForTokens(ctx context.Context, code string) (*TokenResponse, er
 	params.Add("redirect_uri", redirectURI)
 	params.Add("client_id", clientCreds.ClientID)
 	params.Add("client_secret", clientCreds.ClientSecret)
+	// Add PKCE code_verifier
+	params.Add("code_verifier", codeVerifier)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", providerMetadata.TokenEndpoint, strings.NewReader(params.Encode()))
 	if err != nil {
@@ -654,6 +672,25 @@ func generateRandomString(n int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// generateCodeVerifier generates a PKCE code verifier as per RFC 7636.
+// It must be between 43 and 128 characters long.
+func generateCodeVerifier() (string, error) {
+	b := make([]byte, 32) // 32 bytes = 256 bits
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	// Use RawURLEncoding to avoid padding
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// generateCodeChallenge generates a PKCE code challenge using S256 method.
+func generateCodeChallenge(verifier string) string {
+	h := sha256.New()
+	h.Write([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }
 
 func prettyPrint(v interface{}) string {
