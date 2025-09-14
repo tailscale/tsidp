@@ -20,6 +20,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"tailscale.com/util/rands"
 )
 
 // --- Structs for Manual JSON Parsing ---
@@ -192,11 +194,7 @@ func main() {
 	}
 
 	// Generate PKCE parameters (RFC 7636)
-	codeVerifier, err = generateCodeVerifier()
-	if err != nil {
-		fmt.Printf("Failed to generate code verifier: %v", err)
-		os.Exit(1)
-	}
+	codeVerifier = rands.HexString(64)
 	codeChallenge = generateCodeChallenge(codeVerifier)
 	fmt.Printf("Generated PKCE parameters: code_verifier=%s..., code_challenge=%s...\n", codeVerifier[:20], codeChallenge[:20])
 
@@ -672,18 +670,6 @@ func generateRandomString(n int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
-}
-
-// generateCodeVerifier generates a PKCE code verifier as per RFC 7636.
-// It must be between 43 and 128 characters long.
-func generateCodeVerifier() (string, error) {
-	b := make([]byte, 32) // 32 bytes = 256 bits
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	// Use RawURLEncoding to avoid padding
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // generateCodeChallenge generates a PKCE code challenge using S256 method.
