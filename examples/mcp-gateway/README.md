@@ -13,7 +13,7 @@ On start up, the client, gateway, and server each register themselves as OAuth c
 
 To run this example you’ll need to do the following:
 
-## 1) Run tsidp with the `--enable-sts` flag set.
+## 1) Run tsidp with the `--enable-sts` flag set
 
 If running via docker, it should look something like this:
 
@@ -25,7 +25,7 @@ docker run -d \
   -e TSNET_FORCE_LOGIN=1
   -e TAILSCALE_USE_WIP_CODE=1 \
   -v tsidp-data:/var/lib/tsidp \
-  tsidp --hostname=idp-test-docker --dir=/var/lib/tsidp --enable-sts
+  tsidp --hostname=idp --dir=/var/lib/tsidp --enable-sts
 ```
 
 ## 2) Update the ACL rules on your tailnet

@@ -40,7 +40,7 @@ docker run -d \
   -e TSNET_FORCE_LOGIN=1
   -e TAILSCALE_USE_WIP_CODE=1 \
   -v tsidp-data:/var/lib/tsidp \
-  tsidp --hostname=idp-test-docker --dir=/var/lib/tsidp
+  tsidp --hostname=idp --dir=/var/lib/tsidp
 ```
 
 Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
