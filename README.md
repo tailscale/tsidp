@@ -91,8 +91,8 @@ tsidp can be used as IdP server for any application that supports custom OIDC pr
 
 tsidp supports all of the endpoints required & suggested by the [MCP Authorization specification](https://modelcontextprotocol.io/specification/draft/basic/authorization), including Dynamic Client Registration (DCR). More information can be found in the following examples:
 
-- (TODO) MCP Client / Server
-- (TODO) MCP Client / Gateway Server
+- [MCP Client / Server](./examples/mcp-server/README.md)
+- [MCP Client / Gateway Server](./examples/mcp-gateway/README.md)
 
 ## tsidp Configuration Options
 
