@@ -1,0 +1,29 @@
+[project]
+name = "mcp-auth-server"
+version = "0.1.0"
+description = "MCP Server with OAuth 2.1 authentication support"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.2.1",
+    "fastmcp>=2.10.6",
+    "httpx>=0.28.1",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.5.2",
+    "anyio>=4.5",
+    "uvicorn>=0.23.1",
+]
+
+[project.scripts]
+mcp-auth-server = "mcp_auth_server.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.8.0,<0.9"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "httpx>=0.28.1",
+]

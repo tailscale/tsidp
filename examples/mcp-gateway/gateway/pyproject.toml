@@ -1,0 +1,30 @@
+[project]
+name = "mcp-auth-gateway"
+version = "0.1.0"
+description = "MCP Gateway with RFC 8693 OAuth Token Exchange support"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.7",
+    "mcp>=1.0.0",
+    "httpx>=0.25.0",
+    "starlette>=0.36.0",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.5.0",
+    "python-multipart>=0.0.6",
+    "structlog>=24.1.0",
+    "rich>=13.7.0",
+]
+
+[project.scripts]
+mcp-auth-gateway = "mcp_auth_gateway.main:cli"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
