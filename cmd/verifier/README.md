@@ -6,6 +6,33 @@ The verifier is meant to be run like so:
 $ go run . -sts -idp https://idp.ts0000.ts.net
 ```
 
+## Testing Security Token Server (sts) RFC 8693
+
+To test the Security Token Server in tsidp make sure an [application grant](https://tailscale.com/kb/1324/grants) has been set.
+
+> [!NOTE]
+> This is a very permissive grant. Recommended only for testing and development:
+
+```
+...
+"grants": [
+  {
+    "src": ["*"],
+    "dst": ["*"],
+    "ip":  ["*"],
+
+    "app": {
+      "tailscale.com/cap/tsidp": [
+        {
+          "users":     ["*"],
+          "resources": ["*"],
+        },
+      ],
+    },
+  },
+...
+```
+
 ## Output Example
 
 ```
@@ -38,6 +65,9 @@ Step 6: Introspecting the access token...
 Step 7: Calling userinfo endpoint...
 ✅ Success. UserInfo response received.
 
+Step 8: Performing STS token exchange...
+✅ Success. Received exchanged token: d7caca739d794734067d...
+
 ---------------------- OIDC FLOW COMPLETE ----------------------
 
 ✅ All steps completed successfully!
@@ -49,7 +79,7 @@ Step 7: Calling userinfo endpoint...
 --- ID Token Claims ---
 {
   "iss": "https://idp.ts001.ts.net",
-  "sub": "userid:7743467757367193",
+  "sub": "userid:0001",
   "aud": [
     "bb136f58ee4838e95c93c0aaf92712e0"
   ],
