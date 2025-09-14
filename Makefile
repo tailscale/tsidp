@@ -11,7 +11,7 @@ build-linux:
 	GOOS=linux GOARCH=amd64 go build -o build/tsidp-server-linux-amd64-$(shell date +%Y-%m-%d)-$(shell git rev-parse --short=5 HEAD) ./tsidp-server.go
 
 test:
-	go test -v ./oauth ./server
+	go test -count 1 ./server
 
 clean:
 	rm -f build/tsidp-server*
