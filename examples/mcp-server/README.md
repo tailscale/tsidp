@@ -59,7 +59,7 @@ npx @modelcontextprotocol/inspector@0.16.3
 3. Click on `Open Auth Settings`
 4. Click on `Quick OAuth Flow` and you should see all green checks.
 
-<img width="705" height="483" alt="Screenshot 2025-09-13 at 10 52 42 PM" src="https://github.com/user-attachments/assets/349f2ba0-c88d-4b40-9ae2-c91a15b7959d" />
+<img width="705" height="483" alt="A screenshot of a sucessfully completed auth flow in the MCP inspector." src="./images/authorization-flow.png" />
 
 ## 6) Connect to the server and make a tool call
 
@@ -67,4 +67,4 @@ npx @modelcontextprotocol/inspector@0.16.3
 2. Click `List tools`
 3. Call a tool
 
-<img width="705" height="483" alt="Screenshot 2025-09-13 at 10 54 04 PM" src="https://github.com/user-attachments/assets/0bb9d811-683a-43f3-8e8f-1d73f928f7b6" />
+<img width="705" height="483" alt="A screenshot of a tool call being made in the MCP inspector after a sucessful authorization." src="./images/tool-call.png" />
