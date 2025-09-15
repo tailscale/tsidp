@@ -45,8 +45,7 @@ docker run -d \
 
 Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
 
-> [!NOTE]
-> If you're running tsidp for the first time, you may not be able to access it initially even though it is running. It takes a few minutes for the TLS certificate to generate.
+_If you're running tsidp for the first time, you may not be able to access it initially even though it is running. It takes a few minutes for the TLS certificate to generate._
 
 </details>
 
@@ -68,8 +67,7 @@ Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the f
 
 Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
 
-> [!NOTE]
-> If you're running tsidp for the first time, you may not be able to access it initially even though it is running. It takes a few minutes for the TLS certificate to generate.
+_If you're running tsidp for the first time, you may not be able to access it initially even though it is running. It takes a few minutes for the TLS certificate to generate._
 
 </details>
 
