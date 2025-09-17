@@ -1,7 +1,7 @@
 # `tsidp` - Tailscale OpenID Connect (OIDC) Identity Provider
 
 > [!CAUTION]
-> This is an experimental update of tsidp. It is under active development and may experince breaking changes.
+> This is an experimental update of tsidp. It is under active development and may experience breaking changes.
 
 [![status: community project](https://img.shields.io/badge/status-community_project-blue)](https://tailscale.com/kb/1531/community-projects)
 
