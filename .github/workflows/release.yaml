@@ -1,0 +1,53 @@
+name: release-on-tag
+
+on:
+  push:
+    tags:
+      - '*'
+
+  # Allows manual triggering of the workflow
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag release (e.g. v1.2.3)'
+        required: true
+
+  # allow for testing of PR updating this file
+  pull_request:
+    paths:
+      - ".github/workflows/release.yaml"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # 4.3.0
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      -
+        name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      -
+        name: Set GoReleaser args for PR dry run
+        id: goreleaser-args
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "args=release --clean --skip=publish --snapshot" >> $GITHUB_OUTPUT
+          else
+            echo "args=release --clean" >> $GITHUB_OUTPUT
+          fi
+      -
+        name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a #v6.4.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: ${{ steps.goreleaser-args.outputs.args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
