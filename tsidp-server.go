@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/peterbourgon/ff/v4"
+	"github.com/peterbourgon/ff/v4/ffhelp"
 	"github.com/tailscale/tsidp/server"
 
 	"tailscale.com/client/local"
@@ -34,29 +35,23 @@ import (
 	"tailscale.com/version"
 )
 
-// Command line flags
-// Migrated from legacy/tsidp.go:64-73
-var (
-	flagVerbose            = flag.Bool("verbose", false, "be verbose")
-	flagPort               = flag.Int("port", 443, "port to listen on")
-	flagLocalPort          = flag.Int("local-port", -1, "allow requests from localhost")
-	flagUseLocalTailscaled = flag.Bool("use-local-tailscaled", false, "use local tailscaled instead of tsnet")
-	flagFunnel             = flag.Bool("funnel", false, "use Tailscale Funnel to make tsidp available on the public internet")
-	flagHostname           = flag.String("hostname", "idp", "tsnet hostname to use instead of idp")
-	flagDir                = flag.String("dir", "", "tsnet state directory; a default one will be created if not provided")
-	flagEnableSTS          = flag.Bool("enable-sts", false, "enable OIDC STS token exchange support")
-	flagEnableDebug        = flag.Bool("enable-debug", false, "enable debug printing of requests to the server")
-)
-
 // main initializes and starts the tsidp server
 // Migrated from legacy/tsidp.go:75-239
 func main() {
-	flag.Parse()
-	ctx := context.Background()
-	if !envknob.UseWIPCode() {
-		log.Fatal("cmd/tsidp is a work in progress and has not been security reviewed;\nits use requires TAILSCALE_USE_WIP_CODE=1 be set in the environment for now.")
-	}
-
+	fs := ff.NewFlagSet("tsidp")
+	// flag vars
+	var (
+		flagVerbose            = fs.Bool('v', "verbose", "be verbose")
+		flagPort               = fs.Int('p', "port", 443, "port to listen on")
+		flagLocalPort          = fs.IntLong("local-port", -1, "allow requests from localhost")
+		flagUseLocalTailscaled = fs.BoolLong("use-local-tailscaled", "use local tailscaled instead of tsnet")
+		flagFunnel             = fs.BoolLong("funnel", "use Tailscale Funnel to make tsidp available on the public internet")
+		flagHostname           = fs.StringLong("hostname", "idp", "tsnet hostname to use instead of idp")
+		flagDir                = fs.StringLong("dir", "", "tsnet state directory; a default one will be created if not provided")
+		flagEnableSTS          = fs.BoolLong("enable-sts", "enable OIDC STS token exchange support")
+		flagEnableDebug        = fs.BoolLong("enable-debug", "enable debug printing of requests to the server")
+	)
+	// general vars
 	var (
 		lc          *local.Client
 		st          *ipnstate.Status
@@ -66,6 +61,34 @@ func main() {
 
 		lns []net.Listener
 	)
+
+	err = ff.Parse(fs, os.Args[1:],
+		ff.WithEnvVarPrefix("TSIDP_FLAG"), // try `env TSIDP_FLAG_PORT=8080 tsidp`
+	)
+	switch {
+	case errors.Is(err, ff.ErrHelp):
+		fmt.Fprintf(os.Stderr, "%s\n", ffhelp.Flags(fs))
+		fmt.Fprintf(os.Stderr, "\nEnvironment variables (TSIDP_FLAG_ prefix):\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_VERBOSE        same as --verbose\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_PORT           same as --port\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_LOCAL_PORT     same as --local-port\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_USE_LOCAL_TAILSCALED  same as --use-local-tailscaled\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_FUNNEL         same as --funnel\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_HOSTNAME       same as --hostname\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_DIR            same as --dir\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_ENABLE_STS     same as --enable-sts\n")
+		fmt.Fprintf(os.Stderr, "  TSIDP_FLAG_ENABLE_DEBUG   same as --enable-debug\n")
+		os.Exit(0)
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	if !envknob.UseWIPCode() {
+		log.Fatal("cmd/tsidp is a work in progress and has not been security reviewed;\nits use requires TAILSCALE_USE_WIP_CODE=1 be set in the environment for now.")
+	}
+
 	if *flagUseLocalTailscaled {
 		lc = &local.Client{}
 		st, err = lc.StatusWithoutPeers(ctx)

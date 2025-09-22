@@ -108,10 +108,34 @@ The `tsidp` server supports several command-line flags:
 
 ### Environment Variables
 
+#### Tailscale Configuration
+
+These environmant variables are consumed by `tsidp`'s underlying Go library, `tsnet`.
+
 - `TS_AUTHKEY`: Your Tailscale authentication key (required)
-- `TS_HOSTNAME`: Hostname for the `tsidp` server (default: "idp", Docker only)
 - `TS_STATE_DIR`: State directory (default: "/var/lib/tsidp", Docker only)
 - `TAILSCALE_USE_WIP_CODE`: Enable work-in-progress code (default: "1")
+
+#### tsidp Configuration (TSIDP_FLAG_ prefix)
+All command-line flags can be set using environment variables with the `TSIDP_FLAG_` prefix:
+
+- `TSIDP_FLAG_VERBOSE`: Enable verbose logging (same as `--verbose`)
+- `TSIDP_FLAG_PORT`: Port to listen on (same as `--port`, default: 443)
+- `TSIDP_FLAG_LOCAL_PORT`: Allow requests from localhost (same as `--local-port`)
+- `TSIDP_FLAG_USE_LOCAL_TAILSCALED`: Use local tailscaled instead of tsnet (same as `--use-local-tailscaled`)
+- `TSIDP_FLAG_FUNNEL`: Use Tailscale Funnel for public internet access (same as `--funnel`)
+- `TSIDP_FLAG_HOSTNAME`: tsnet hostname (same as `--hostname`, default: "idp")
+- `TSIDP_FLAG_DIR`: tsnet state directory (same as `--dir`)
+- `TSIDP_FLAG_ENABLE_STS`: Enable OAuth token exchange (same as `--enable-sts`)
+- `TSIDP_FLAG_ENABLE_DEBUG`: Enable debug request printing (same as `--enable-debug`)
+
+Example usage:
+```bash
+export TSIDP_FLAG_PORT=8080
+export TSIDP_FLAG_VERBOSE=true
+export TSIDP_FLAG_FUNNEL=true
+./tsidp-server
+```
 
 ## Support
 
