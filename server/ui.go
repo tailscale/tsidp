@@ -8,7 +8,7 @@ import (
 	_ "embed"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -44,18 +44,18 @@ var processStart = time.Now()
 // Migrated from legacy/ui.go:61-85
 func (s *IDPServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	if isFunnelRequest(r) {
-		http.Error(w, "tsidp: UI not available over Funnel", http.StatusNotFound)
+		writeHTTPError(w, r, http.StatusUnauthorized, ecAccessDenied, "not available over funnel", nil)
 		return
 	}
 
 	access, ok := r.Context().Value(appCapCtxKey).(*accessGrantedRules)
 	if !ok {
-		writeJSONError(w, http.StatusForbidden, "access_denied", "application capability not found")
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "application capability not found", nil)
 		return
 	}
 
 	if !access.allowAdminUI {
-		writeJSONError(w, http.StatusForbidden, "access_denied", "application capability not granted")
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "application capability not granted", nil)
 		return
 	}
 
@@ -76,7 +76,7 @@ func (s *IDPServer) handleUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Error(w, "tsidp: not found", http.StatusNotFound)
+	writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "not found", nil)
 }
 
 // handleClientsList displays the list of configured OAuth/OIDC clients
@@ -103,7 +103,7 @@ func (s *IDPServer) handleClientsList(w http.ResponseWriter, r *http.Request) {
 
 	var buf bytes.Buffer
 	if err := listTmpl.Execute(&buf, clients); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render client list", err)
 		return
 	}
 	buf.WriteTo(w)
@@ -114,14 +114,14 @@ func (s *IDPServer) handleClientsList(w http.ResponseWriter, r *http.Request) {
 func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		if err := s.renderClientForm(w, clientDisplayData{IsNew: true}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
 		}
 		return
 	}
 
 	if r.Method == "POST" {
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Failed to parse form", http.StatusBadRequest)
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "Failed to parse form", err)
 			return
 		}
 
@@ -136,13 +136,13 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(redirectURIs) == 0 {
-			s.renderFormError(w, baseData, "At least one redirect URI is required")
+			s.renderFormError(w, r, baseData, "At least one redirect URI is required")
 			return
 		}
 
 		for _, uri := range redirectURIs {
 			if errMsg := validateRedirectURI(uri); errMsg != "" {
-				s.renderFormError(w, baseData, fmt.Sprintf("Invalid redirect URI '%s': %s", uri, errMsg))
+				s.renderFormError(w, r, baseData, fmt.Sprintf("Invalid redirect URI '%s': %s", uri, errMsg))
 				return
 			}
 		}
@@ -165,8 +165,8 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 
 		if err != nil {
-			log.Printf("could not write funnel clients db: %v", err)
-			s.renderFormError(w, baseData, "Failed to save client")
+			slog.Error("client create: could not write funnel clients db", slog.Any("error", err))
+			s.renderFormError(w, r, baseData, "Failed to save client")
 			return
 		}
 
@@ -177,11 +177,11 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 			Secret:       clientSecret,
 			IsNew:        true,
 		}
-		s.renderFormSuccess(w, successData, "Client created successfully! Save the client secret - it won't be shown again.")
+		s.renderFormSuccess(w, r, successData, "Client created successfully! Save the client secret - it won't be shown again.")
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
 }
 
 // handleEditClient handles editing an existing OAuth/OIDC client
@@ -189,7 +189,7 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 	clientID := strings.TrimPrefix(r.URL.Path, "/edit/")
 	if clientID == "" {
-		http.Error(w, "Client ID required", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "Client ID required", nil)
 		return
 	}
 
@@ -198,7 +198,7 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if !exists {
-		http.Error(w, "Client not found", http.StatusNotFound)
+		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "Client not found", nil)
 		return
 	}
 
@@ -211,7 +211,7 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 			IsEdit:       true,
 		}
 		if err := s.renderClientForm(w, data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
 		}
 		return
 	}
@@ -226,7 +226,7 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 			s.mu.Unlock()
 
 			if err != nil {
-				log.Printf("could not write funnel clients db: %v", err)
+				slog.Error("client delete: could not write funnel clients db", slog.Any("error", err))
 				s.mu.Lock()
 				s.funnelClients[clientID] = client
 				s.mu.Unlock()
@@ -238,7 +238,7 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 					HasSecret:    client.Secret != "",
 					IsEdit:       true,
 				}
-				s.renderFormError(w, baseData, "Failed to delete client. Please try again.")
+				s.renderFormError(w, r, baseData, "Failed to delete client. Please try again.")
 				return
 			}
 
@@ -262,18 +262,18 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if err != nil {
-				log.Printf("could not write funnel clients db: %v", err)
-				s.renderFormError(w, baseData, "Failed to regenerate secret")
+				slog.Error("client regen secret: could not write funnel clients db", slog.Any("error", err))
+				s.renderFormError(w, r, baseData, "Failed to regenerate secret")
 				return
 			}
 
 			baseData.Secret = newSecret
-			s.renderFormSuccess(w, baseData, "New client secret generated! Save it - it won't be shown again.")
+			s.renderFormSuccess(w, r, baseData, "New client secret generated! Save it - it won't be shown again.")
 			return
 		}
 
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Failed to parse form", http.StatusBadRequest)
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "Failed to parse form", err)
 			return
 		}
 
@@ -289,13 +289,13 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if len(redirectURIs) == 0 {
-			s.renderFormError(w, baseData, "At least one redirect URI is required")
+			s.renderFormError(w, r, baseData, "At least one redirect URI is required")
 			return
 		}
 
 		for _, uri := range redirectURIs {
 			if errMsg := validateRedirectURI(uri); errMsg != "" {
-				s.renderFormError(w, baseData, fmt.Sprintf("Invalid redirect URI '%s': %s", uri, errMsg))
+				s.renderFormError(w, r, baseData, fmt.Sprintf("Invalid redirect URI '%s': %s", uri, errMsg))
 				return
 			}
 		}
@@ -307,16 +307,16 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 
 		if err != nil {
-			log.Printf("could not write funnel clients db: %v", err)
-			s.renderFormError(w, baseData, "Failed to update client")
+			slog.Error("client update: could not write funnel clients db", slog.Any("error", err))
+			s.renderFormError(w, r, baseData, "Failed to update client")
 			return
 		}
 
-		s.renderFormSuccess(w, baseData, "Client updated successfully!")
+		s.renderFormSuccess(w, r, baseData, "Client updated successfully!")
 		return
 	}
 
-	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
 }
 
 // clientDisplayData holds data for rendering client forms and lists
@@ -348,19 +348,19 @@ func (s *IDPServer) renderClientForm(w http.ResponseWriter, data clientDisplayDa
 
 // renderFormError renders the form with an error message
 // Migrated from legacy/ui.go:344-349
-func (s *IDPServer) renderFormError(w http.ResponseWriter, data clientDisplayData, errorMsg string) {
+func (s *IDPServer) renderFormError(w http.ResponseWriter, r *http.Request, data clientDisplayData, errorMsg string) {
 	data.Error = errorMsg
 	if err := s.renderClientForm(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
 	}
 }
 
 // renderFormSuccess renders the form with a success message
 // Migrated from legacy/ui.go:351-356
-func (s *IDPServer) renderFormSuccess(w http.ResponseWriter, data clientDisplayData, successMsg string) {
+func (s *IDPServer) renderFormSuccess(w http.ResponseWriter, r *http.Request, data clientDisplayData, successMsg string) {
 	data.Success = successMsg
 	if err := s.renderClientForm(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
 	}
 }
 

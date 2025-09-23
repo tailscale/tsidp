@@ -6,7 +6,7 @@ package server
 import (
 	"crypto/subtle"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -22,9 +22,8 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// This URL is visited by the user who is being authenticated. If they are
 	// visiting the URL over Funnel, that means they are not part of the
 	// tailnet that they are trying to be authenticated for.
-	// NOTE: Funnel request behavior is the same regardless of secure or insecure mode.
 	if isFunnelRequest(r) {
-		http.Error(w, "tsidp: unauthorized", http.StatusUnauthorized)
+		writeHTTPError(w, r, http.StatusUnauthorized, ecAccessDenied, "not allowed over funnel", nil)
 		return
 	}
 
@@ -33,13 +32,13 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	redirectURI := uq.Get("redirect_uri")
 	if redirectURI == "" {
-		http.Error(w, "tsidp: must specify redirect_uri", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "must specify redirect_uri", nil)
 		return
 	}
 
 	clientID := uq.Get("client_id")
 	if clientID == "" {
-		http.Error(w, "tsidp: must specify client_id", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "must specify client_id", nil)
 		return
 	}
 
@@ -48,20 +47,20 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if !ok {
-		http.Error(w, "tsidp: invalid client ID", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidClient, "invalid client ID", nil)
 		return
 	}
 
 	// Validate client_id matches (public identifier validation)
 	clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(funnelClient.ID))
 	if clientIDcmp != 1 {
-		http.Error(w, "tsidp: invalid client ID", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidClient, "invalid client ID", nil)
 		return
 	}
 
 	// check for exact match of redirect_uri (OAuth 2.1 requirement)
 	if !slices.Contains(funnelClient.RedirectURIs, redirectURI) {
-		http.Error(w, "tsidp: redirect_uri mismatch", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "redirect_uri mismatch", nil)
 		return
 	}
 
@@ -78,8 +77,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	var err error
 	who, err = s.lc.WhoIs(r.Context(), remoteAddr)
 	if err != nil {
-		log.Printf("Error getting WhoIs: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to authenticate user with WhoIs", err)
 		return
 	}
 
@@ -118,7 +116,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 
 		// Validate the code_challenge_method
 		if ar.CodeChallengeMethod != "plain" && ar.CodeChallengeMethod != "S256" {
-			redirectAuthError(w, r, redirectURI, "invalid_request", "unsupported code_challenge_method", state)
+			redirectAuthError(w, r, redirectURI, ecInvalidRequest, "unsupported code_challenge_method", state)
 			return
 		}
 	}
@@ -134,13 +132,12 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	parsedURL, err := url.Parse(redirectURI)
 	if err != nil {
-		http.Error(w, "invalid redirect URI", http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "invalid redirect URI", err)
 		return
 	}
 	parsedURL.RawQuery = queryString.Encode()
 	u := parsedURL.String()
-	log.Printf("Redirecting to %q", u)
-
+	slog.Debug("authorize redirect", slog.String("url", u))
 	http.Redirect(w, r, u, http.StatusFound)
 }
 
@@ -178,7 +175,7 @@ func redirectAuthError(w http.ResponseWriter, r *http.Request, redirectURI, erro
 	u, err := url.Parse(redirectURI)
 	if err != nil {
 		// If redirect URI is invalid, return error directly
-		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "invalid redirect_uri", err)
 		return
 	}
 
@@ -192,5 +189,10 @@ func redirectAuthError(w http.ResponseWriter, r *http.Request, redirectURI, erro
 	}
 	u.RawQuery = q.Encode()
 
+	slog.Info("Redirecting to client with error",
+		slog.String("error_code", errorCode),
+		slog.String("state", state),
+		slog.String("redirect_uri", u.String()),
+	)
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }

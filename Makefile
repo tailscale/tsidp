@@ -1,4 +1,4 @@
-.PHONY: build build-osx build-linux test clean
+.PHONY: build build-osx build-linux test clean docker-image
 
 build: build-osx build-linux
 
@@ -9,6 +9,9 @@ build-osx:
 build-linux:
 	@mkdir -p build
 	GOOS=linux GOARCH=amd64 go build -o build/tsidp-server-linux-amd64-$(shell date +%Y-%m-%d)-$(shell git rev-parse --short=5 HEAD) ./tsidp-server.go
+
+docker-image:
+	docker build -t tsidp:latest .
 
 test:
 	go test -count 1  . ./server

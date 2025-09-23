@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/netip"
 
@@ -91,13 +90,13 @@ func (s *IDPServer) addGrantAccessContext(handler http.HandlerFunc) http.Handler
 
 		who, err = s.lc.WhoIs(r.Context(), remoteAddr)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error getting WhoIs: %v", err), http.StatusInternalServerError)
+			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "Error getting WhoIs", err)
 			return
 		}
 
 		rules, err := tailcfg.UnmarshalCapJSON[capRule](who.CapMap, "tailscale.com/cap/tsidp")
 		if err != nil {
-			http.Error(w, fmt.Sprintf("failed unmarshaling app cap rule %s", err.Error()), http.StatusInternalServerError)
+			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed unmarshaling app cap rule", err)
 			return
 		}
 		accessRules.rules = rules

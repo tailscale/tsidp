@@ -27,16 +27,26 @@ if [ -n "$TSIDP_LOCAL_PORT" ]; then
     ARGS="$ARGS -local-port=$TSIDP_LOCAL_PORT"
 fi
 
-#
-# These flags will eventually be replaced
-# with more specific logging flags.
-#
-if [ -n "$TSIDP_VERBOSE" ]; then
-    ARGS="$ARGS -verbose"
+# logging control
+if [ -n "$TSIDP_LOG" ]; then
+    case "$TSIDP_LOG" in
+        debug|info|warn|error)
+            ARGS="$ARGS -log=$TSIDP_LOG"
+            ;;
+        *)
+            echo "Error: TSIDP_LOG_LEVEL must be one of: debug, info, warn, error"
+            echo "Current value: $TSIDP_LOG"
+            exit 1
+            ;;
+    esac
 fi
 
-if [ -n "$TSIDP_ENABLE_DEBUG" ]; then
-    ARGS="$ARGS -enable-debug"
+if [ -n "$TSIDP_DEBUG_ALL_REQUESTS" ]; then
+    ARGS="$ARGS -debug-all-requests"
+fi
+
+if [ -n "$TSIDP_DEBUG_TSNET" ]; then
+    ARGS="$ARGS -debug-tsnet"
 fi
 
 # Execute tsidp-server with the built arguments

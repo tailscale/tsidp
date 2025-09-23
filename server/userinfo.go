@@ -6,7 +6,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -53,12 +53,12 @@ func (ui userInfo) toMap() map[string]any {
 // Migrated from legacy/tsidp.go:694-769
 func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 	tk, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
-		writeBearerError(w, http.StatusBadRequest, "invalid_request", "invalid Authorization header")
+		writeBearerError(w, http.StatusBadRequest, ecInvalidRequest, "invalid Authorization header")
 		return
 	}
 
@@ -80,7 +80,7 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	ui := userInfo{}
 	if ar.RemoteUser.Node.IsTagged() {
-		http.Error(w, "tsidp: tagged nodes not supported", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "tagged nodes not supported", nil)
 		return
 	}
 
@@ -97,7 +97,7 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	rules, err := tailcfg.UnmarshalCapJSON[capRule](ar.RemoteUser.CapMap, tailcfg.PeerCapabilityTsIDP)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("tsidp: failed to unmarshal capability: %v", err), http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "failed to unmarshal capability", err)
 		return
 	}
 
@@ -111,14 +111,14 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	userInfoMap, err := withExtraClaims(ui.toMap(), filtered)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "failed to process user claims", err)
 		return
 	}
 
 	// Write the final result
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(userInfoMap); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to encode user info", err)
 	}
 }
 
@@ -167,6 +167,10 @@ func addClaimValue(sets map[string]map[string]struct{}, claim string, val any) {
 
 	default:
 		// Log unsupported types for visibility and debugging
-		log.Printf("Unsupported claim type for %q: %#v (type %T)", claim, val, val)
+		slog.Warn("unsupported claim type",
+			slog.String("claim", claim),
+			slog.Any("value", v),
+			slog.String("type", fmt.Sprintf("%T", v)),
+		)
 	}
 }

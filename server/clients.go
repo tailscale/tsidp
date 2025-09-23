@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -89,7 +89,7 @@ func (s *IDPServer) LoadFunnelClients() error {
 		}
 	}
 	if migrationPerformed {
-		log.Println("Migrated old funnel clients with single redirect_uri to redirect_uris field.")
+		slog.Info("Migrated old funnel clients with single redirect_uri to redirect_uris field.")
 		if err := s.storeFunnelClientsLocked(); err != nil {
 			return fmt.Errorf("failed to store migrated clients: %w", err)
 		}
@@ -122,7 +122,7 @@ func (s *IDPServer) storeFunnelClientsLocked() error {
 // Migrated from legacy/tsidp.go:2055-2094
 func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 	if isFunnelRequest(r) {
-		http.Error(w, "tsidp: not found", http.StatusNotFound)
+		writeHTTPError(w, r, http.StatusUnauthorized, ecAccessDenied, "not available over funnel", nil)
 		return
 	}
 
@@ -142,7 +142,7 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if !ok {
-		http.Error(w, "tsidp: client not found", http.StatusNotFound)
+		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "client not found", nil)
 		return
 	}
 
@@ -157,7 +157,7 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 			RedirectURIs: c.RedirectURIs,
 		})
 	default:
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 	}
 }
 
@@ -165,13 +165,13 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 // Migrated from legacy/tsidp.go:2096-2126
 func (s *IDPServer) serveNewClient(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 	redirectURI := r.FormValue("redirect_uri")
 	name := r.FormValue("name")
 	if redirectURI == "" || name == "" {
-		http.Error(w, "tsidp: missing redirect_uri or name", http.StatusBadRequest)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "missing redirect_uri or name", nil)
 		return
 	}
 
@@ -196,7 +196,7 @@ func (s *IDPServer) serveNewClient(w http.ResponseWriter, r *http.Request) {
 	s.funnelClients[clientID] = client
 
 	if err := s.storeFunnelClientsLocked(); err != nil {
-		http.Error(w, fmt.Sprintf("tsidp: failed to store client: %v", err), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store client", err)
 		return
 	}
 
@@ -207,7 +207,7 @@ func (s *IDPServer) serveNewClient(w http.ResponseWriter, r *http.Request) {
 // Migrated from legacy/tsidp.go:2128-2145
 func (s *IDPServer) serveGetClientsList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 	s.mu.Lock()
@@ -231,14 +231,14 @@ func (s *IDPServer) serveGetClientsList(w http.ResponseWriter, r *http.Request) 
 // Migrated from legacy/tsidp.go:2239-2265
 func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, clientID string) {
 	if r.Method != "DELETE" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.funnelClients[clientID]; !ok {
-		http.Error(w, "tsidp: client not found", http.StatusNotFound)
+		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "client not found", nil)
 		return
 	}
 
@@ -262,7 +262,7 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 	}
 
 	if err := s.storeFunnelClientsLocked(); err != nil {
-		http.Error(w, fmt.Sprintf("tsidp: failed to store clients: %v", err), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store clients", err)
 		return
 	}
 
@@ -274,9 +274,10 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *http.Request) {
 	// Block funnel requests - dynamic registration is only available over tailnet
 	if isFunnelRequest(r) {
-		writeJSONError(w, http.StatusForbidden, "access_denied", "dynamic client registration not available over funnel")
+		writeHTTPError(w, r, http.StatusUnauthorized, ecAccessDenied, "not available over funnel", nil)
 		return
 	}
+
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
 	h.Set("Access-Control-Allow-Method", "POST, OPTIONS")
@@ -288,18 +289,18 @@ func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *htt
 	}
 
 	if r.Method != "POST" {
-		writeJSONError(w, http.StatusMethodNotAllowed, "invalid_request", "method not allowed")
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 
 	access, ok := r.Context().Value(appCapCtxKey).(*accessGrantedRules)
 	if !ok {
-		writeJSONError(w, http.StatusForbidden, "access_denied", "application capability not found")
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "application capability not found", nil)
 		return
 	}
 
 	if !access.allowDCR {
-		writeJSONError(w, http.StatusForbidden, "access_denied", "application capability not granted")
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "application capability not granted", nil)
 		return
 	}
 
@@ -317,13 +318,13 @@ func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *htt
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&registrationRequest); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "invalid request body", err)
 		return
 	}
 
 	// Validate required fields
 	if len(registrationRequest.RedirectURIs) == 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid_client_metadata", "redirect_uris is required")
+		writeHTTPError(w, r, http.StatusBadRequest, "invalid_client_metadata", "redirect_uris is required", nil)
 		return
 	}
 
@@ -371,7 +372,7 @@ func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *htt
 	s.funnelClients[clientID] = client
 
 	if err := s.storeFunnelClientsLocked(); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "server_error", "failed to store client")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store client", err)
 		return
 	}
 
@@ -422,23 +423,4 @@ func generateClientID() string {
 // generateClientSecret generates a random client secret
 func generateClientSecret() string {
 	return rands.HexString(64)
-}
-
-// validateRedirectURI validates that a redirect URI is allowed for a client
-func (s *IDPServer) validateRedirectURI(clientID, redirectURI string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	client, ok := s.funnelClients[clientID]
-	if !ok {
-		return false
-	}
-
-	for _, uri := range client.RedirectURIs {
-		if uri == redirectURI {
-			return true
-		}
-	}
-
-	return false
 }

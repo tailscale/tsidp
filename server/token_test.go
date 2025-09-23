@@ -562,7 +562,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			clientSecret: "wrong-secret",
 			expectStatus: http.StatusBadRequest, // Both legacy and server should reject this
 			checkResponse: func(t *testing.T, body []byte) {
-				var resp oauthErrorResponse
+				var resp httpErrorResponse
 				if err := json.Unmarshal(body, &resp); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
