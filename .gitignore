@@ -5,3 +5,4 @@ legacy/*.json
 server/oidc-key.json
 oidc-key.json
 oidc-funnel-clients.json
+result

@@ -41,7 +41,7 @@ func TestLicenseHeaders(t *testing.T) {
 		}
 		base := filepath.Base(path)
 		switch base {
-		case ".git", "node_modules", "tempfork":
+		case ".git", "node_modules", "tempfork", "vendor":
 			return filepath.SkipDir
 		}
 		switch base {
