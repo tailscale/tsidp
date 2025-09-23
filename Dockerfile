@@ -30,7 +30,11 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
 # Copy the binary from builder
-COPY --from=builder /app/tsidp-server .
+COPY --from=builder /app/tsidp-server /tsidp-server
 
-# Run the binary
-ENTRYPOINT ["./tsidp-server"]
+# Copy the entrypoint script
+COPY scripts/docker/run.sh /run.sh
+RUN chmod +x /run.sh
+
+# Run the binary through the entrypoint script
+ENTRYPOINT ["/run.sh"]

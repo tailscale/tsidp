@@ -37,11 +37,14 @@ docker build -t tsidp .
 docker run -d \
   --name tsidp \
   -p 443:443 \
+  -v tsidp-data:/data \
+  -e TS_STATE_DIR=/data \
   -e TS_AUTHKEY=YOUR_TAILSCALE_AUTHKEY \
-  -e TSNET_FORCE_LOGIN=1
+  -e TSNET_FORCE_LOGIN=1 \
   -e TAILSCALE_USE_WIP_CODE=1 \
-  -v tsidp-data:/var/lib/tsidp \
-  tsidp --hostname=idp --dir=/var/lib/tsidp
+  -e TSIDP_ENABLE_STS=1 \
+  -e TS_HOSTNAME=idp \
+  tsidp
 ```
 
 Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
@@ -125,24 +128,39 @@ tsidp supports all of the endpoints required & suggested by the [MCP Authorizati
 
 ## tsidp Configuration Options
 
-The `tsidp` server supports several command-line flags:
+The `tsidp` server is configured by several command-line flags:
 
-- `--verbose`: Enable verbose logging
-- `--port`: Port to listen on (default: 443)
-- `--local-port`: Allow requests from localhost
-- `--use-local-tailscaled`: Use local tailscaled instead of tsnet
-- `--funnel`: Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products
-- `--hostname`: tsnet hostname
-- `--dir`: tsnet state directory
-- `--enable-sts`: Enable OAuth token exchange using RFC 8693
-- `--enable-debug`: Enable debug printing of requests to the server
+- `-verbose`: Enable verbose logging
+- `-port`: Port to listen on (default: 443)
+- `-local-port`: Allow requests from localhost
+- `-use-local-tailscaled`: Use local tailscaled instead of tsnet
+- `-funnel`: Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products
+- `-hostname`: tsnet hostname
+- `-dir`: tsnet state directory
+- `-enable-sts`: Enable OAuth token exchange using RFC 8693
+- `-enable-debug`: Enable debug printing of requests to the server
 
 ### Environment Variables
 
+These are needed while tsidp is in development (< v1.0.0):
+
+- `TAILSCALE_USE_WIP_CODE`: Enable work-in-progress code (default: "1", required)
 - `TS_AUTHKEY`: Your Tailscale authentication key (required)
-- `TS_HOSTNAME`: Hostname for the `tsidp` server (default: "idp", Docker only)
-- `TS_STATE_DIR`: State directory (default: "/var/lib/tsidp", Docker only)
-- `TAILSCALE_USE_WIP_CODE`: Enable work-in-progress code (default: "1")
+
+The docker container accepts environment variables that are mapped to the command-line flags:
+
+| Environment Variable            | CLI flag                   |
+| ------------------------------- | -------------------------- |
+| `TS_HOSTNAME=<hostname>`        | `-hostname <hostname>`     |
+| `TS_STATE_DIR=<directory>`      | `-dir <directory>`         |
+| `TSIDP_USE_FUNNEL=1`            | `-funnel`                  |
+| `TSIDP_PORT=<port>`             | `-port <port>`             |
+| `TSIDP_LOCAL_PORT=<local-port>` | `-local-port <local-port>` |
+| `TSIDP_ENABLE_STS=1`            | `-enable-sts`              |
+| `TSIDP_VERBOSE=1`               | `-verbose`                 |
+| `TSIDP_ENABLE_DEBUG=1`          | `-enable-debug`            |
+
+All environment variables are optional. When omitted the default value for the command-line flag will be used.
 
 ## Support
 
