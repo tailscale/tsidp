@@ -453,7 +453,7 @@ func ServeOnLocalTailscaled(ctx context.Context, lc *local.Client, st *ipnstate.
 //   - r: *http.Request to inspect Accept header and method/path for logging
 //   - statusCode: HTTP status code (e.g., 400, 401, 403, 500)
 //   - errorCode: Unique error code, use constants: ecAccessDenied, ecInvalidRequest, etc.
-//   - errorDescription: Human-readable error description
+//   - errorDescription: Human-readable error description sent in the response body
 //   - err: Optional underlying error for additional logging context
 func writeHTTPError(
 	w http.ResponseWriter,

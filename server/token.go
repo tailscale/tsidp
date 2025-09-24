@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -160,7 +161,8 @@ func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 		}
 		s.serveTokenExchange(w, r)
 	default:
-		writeHTTPError(w, r, http.StatusBadRequest, ecUnsupportedGrant, "grant type sent: "+grantType, nil)
+		writeHTTPError(w, r, http.StatusBadRequest, ecUnsupportedGrant, "unsupported grant type",
+			fmt.Errorf("unsupported grant type %q", grantType))
 	}
 }
 
@@ -187,7 +189,8 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 		return
 	}
 	if ar.RedirectURI != r.FormValue("redirect_uri") {
-		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "redirect_uri mismatch", nil)
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "redirect_uri mismatch",
+			fmt.Errorf("got redirect_uri %q, want %q", r.FormValue("redirect_uri"), ar.RedirectURI))
 		return
 	}
 
@@ -610,6 +613,13 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 	rtAuth.ValidTill = now.Add(30 * 24 * time.Hour) // 30 days
 	mak.Set(&s.refreshToken, rt, &rtAuth)
 	s.mu.Unlock()
+
+	slog.Info("token issued",
+		slog.String("for", who.UserProfile.LoginName),
+		slog.String("uid", n.User().String()),
+		slog.String("client_id", ar.ClientID),
+		slog.String("redirect_uri", ar.RedirectURI),
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(oidcTokenResponse{
