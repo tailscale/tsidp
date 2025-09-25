@@ -87,7 +87,7 @@ func TestMetadataEndpoints(t *testing.T) {
 				"token_endpoint",
 				"jwks_uri",
 			}
-			
+
 			// OpenID specific endpoints
 			if strings.Contains(tt.endpoint, "openid") {
 				expectedEndpoints = append(expectedEndpoints, "userinfo_endpoint")
@@ -250,19 +250,19 @@ func TestPKCEMetadata(t *testing.T) {
 // TestMetadataSTSSupport tests that STS token exchange grant is properly advertised when enabled
 func TestMetadataSTSSupport(t *testing.T) {
 	tests := []struct {
-		name              string
-		enableSTS         bool
-		expectSTSGrant    bool
+		name           string
+		enableSTS      bool
+		expectSTSGrant bool
 	}{
 		{
-			name:              "STS disabled",
-			enableSTS:         false,
-			expectSTSGrant:    false,
+			name:           "STS disabled",
+			enableSTS:      false,
+			expectSTSGrant: false,
 		},
 		{
-			name:              "STS enabled",
-			enableSTS:         true,
-			expectSTSGrant:    true,
+			name:           "STS enabled",
+			enableSTS:      true,
+			expectSTSGrant: true,
 		},
 	}
 
@@ -373,21 +373,5 @@ func TestJWKSEndpoint(t *testing.T) {
 		if use, ok := key["use"].(string); !ok || use != "sig" {
 			t.Error("expected use to be sig")
 		}
-	}
-}
-
-// TestJWKSEndpointInvalidPath tests that JWKS endpoint returns 404 for invalid paths
-func TestJWKSEndpointInvalidPath(t *testing.T) {
-	s := &IDPServer{
-		serverURL: "https://idp.test.ts.net",
-	}
-
-	req := httptest.NewRequest("GET", "/invalid/path", nil)
-	rr := httptest.NewRecorder()
-
-	s.serveJWKS(rr, req)
-
-	if rr.Code != http.StatusNotFound {
-		t.Errorf("expected status 404, got %d", rr.Code)
 	}
 }

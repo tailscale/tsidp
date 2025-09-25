@@ -4,9 +4,15 @@
 package server
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 )
+
+func init() {
+	// change from default INFO level to reduce noise in tests
+	slog.SetLogLoggerLevel(slog.LevelError)
+}
 
 // TestNew tests creation of a new IDPServer
 func TestNew(t *testing.T) {

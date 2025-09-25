@@ -189,7 +189,7 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 		return
 	}
 	if ar.RedirectURI != r.FormValue("redirect_uri") {
-		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "redirect_uri mismatch",
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "redirect_uri mismatch",
 			fmt.Errorf("got redirect_uri %q, want %q", r.FormValue("redirect_uri"), ar.RedirectURI))
 		return
 	}

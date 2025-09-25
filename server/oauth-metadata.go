@@ -96,10 +96,6 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if r.URL.Path != "/.well-known/openid-configuration" {
-		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "not found", nil)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	je := json.NewEncoder(w)
@@ -149,10 +145,6 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if r.URL.Path != "/.well-known/oauth-authorization-server" {
-		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "not found", nil)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	je := json.NewEncoder(w)
@@ -192,11 +184,6 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 // serveJWKS serves the JSON Web Key Set endpoint
 // Migrated from legacy/tsidp.go:1723-1750
 func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/.well-known/jwks.json" {
-		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "endpoint not found", nil)
-		return
-	}
-
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
 	h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
