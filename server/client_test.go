@@ -378,6 +378,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			}
 
 			req := httptest.NewRequest(tt.method, "/register", body)
+			req.Header.Add("Accept", "application/json")
 			if tt.isFunnel {
 				req.Header.Set("Tailscale-Funnel-Request", "true")
 			}

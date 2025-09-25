@@ -110,7 +110,7 @@ func TestSetFunnelClients(t *testing.T) {
 	}
 }
 
-// TestCleanupExpiredTokens tests token cleanup  
+// TestCleanupExpiredTokens tests token cleanup
 // Enhanced migration combining legacy/tsidp_test.go:833-867 and legacy/tsidp_test.go:2310-2331
 // Tests cleanup of authorization codes, access tokens, and refresh tokens
 func TestCleanupExpiredTokens(t *testing.T) {

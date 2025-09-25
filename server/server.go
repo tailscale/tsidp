@@ -489,17 +489,15 @@ func writeHTTPError(
 
 	acceptHeader := r.Header.Get("Accept")
 	switch {
-	case strings.Contains(acceptHeader, "text/html"):
-		fallthrough
-	case strings.Contains(acceptHeader, "text/plain"):
-		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
-		fmt.Fprintf(w, "Error %d: %s - %s", statusCode, errorCode, errorDescription)
-	default:
+	case strings.Contains(acceptHeader, "application/json"):
 		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		json.NewEncoder(w).Encode(httpErrorResponse{
 			Error:            errorCode,
 			ErrorDescription: errorDescription,
 		})
+	default:
+		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+		fmt.Fprintf(w, "Error %d: %s - %s", statusCode, errorCode, errorDescription)
 	}
 }
 
