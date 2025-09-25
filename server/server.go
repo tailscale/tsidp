@@ -466,8 +466,8 @@ func writeHTTPError(
 		slog.Int("status", statusCode),
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
-		slog.String("error", errorCode),
-		slog.String("description", errorDescription),
+		slog.String("code", errorCode),
+		slog.String("desc", errorDescription),
 	}
 
 	if err != nil {
