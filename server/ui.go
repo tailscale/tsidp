@@ -365,14 +365,15 @@ func (s *IDPServer) renderFormSuccess(w http.ResponseWriter, data clientDisplayD
 }
 
 // validateRedirectURI validates that a redirect URI is well-formed
-// Migrated from legacy/ui.go:358-367
 func validateRedirectURI(redirectURI string) string {
 	u, err := url.Parse(redirectURI)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return "must be a valid HTTP or HTTPS URL"
+	if err != nil || u.Scheme == "" {
+		return "must be a valid URI with a scheme"
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return "must use HTTP or HTTPS scheme"
+	if u.Scheme == "http" || u.Scheme == "https" {
+		if u.Host == "" {
+			return "HTTP and HTTPS URLs must have a host"
+		}
 	}
 	return ""
 }
