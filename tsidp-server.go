@@ -125,6 +125,16 @@ func main() {
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
 		}
+
+		if advertiseTags := os.Getenv("TS_ADVERTISE_TAGS"); advertiseTags != "" {
+			tags := strings.Split(advertiseTags, ",")
+			for i, tag := range tags {
+				tags[i] = strings.TrimSpace(tag)
+			}
+			ts.AdvertiseTags = tags
+			slog.Info("Using advertise tags", slog.String("tags", strings.Join(tags, ",")))
+		}
+
 		if *flagDebugTSNet {
 			ts.Logf = func(format string, args ...any) {
 				cur := slog.SetLogLoggerLevel(slog.LevelDebug) // force debug if this option is on
@@ -132,16 +142,19 @@ func main() {
 				slog.SetLogLoggerLevel(cur)
 			}
 		}
+
 		st, err = ts.Up(ctx)
 		if err != nil {
 			slog.Error("failed to start tsnet server", slog.Any("error", err))
 			os.Exit(1)
 		}
+
 		lc, err = ts.LocalClient()
 		if err != nil {
 			slog.Error("failed to get local client", slog.Any("error", err))
 			os.Exit(1)
 		}
+
 		var ln net.Listener
 		if *flagFunnel {
 			if err := ipn.CheckFunnelAccess(uint16(*flagPort), st.Self); err != nil {

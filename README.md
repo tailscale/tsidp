@@ -52,6 +52,15 @@ Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to c
 > [!NOTE]
 > If you're running tsidp for the first time it may take a few minutes for the TLS certificate to generate. You may not be able to access the service until the certificate is ready.
 
+> [!NOTE] Using OAuth Client Secrets
+> As an alternative to traditional auth keys, you can use OAuth client secrets for authentication by passing them through `TS_AUTHKEY`.
+>
+> When using OAuth client secrets:
+> - Pass the OAuth client secret through `TS_AUTHKEY` (same as regular auth keys)
+> - Specify advertise tags using `TS_ADVERTISE_TAGS`
+> - The OAuth client secret must start with `tskey-client-`
+> - The tags must be properly configured in your Tailscale ACL policy
+
 ### Other Ways to Build and Run
 
 <details>
@@ -162,7 +171,11 @@ The `tsidp-server` binary is configured through the CLI flags above. However, th
 
 These environment variables are used when tsidp does not have any state information set in `-dir <path>`.
 
-- `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. If omitted a link will be printed to manually register.
+> [!WARNING]
+> **Serverless/Stateless Deployment**: tsidp requires persistent state storage to function properly in production. Without a persistent `-dir`, the service will re-register with Tailscale on every restart, lose dynamic OIDC client registrations, and invalidate user sessions. Serverless environments without persistent storage are not recommended for production use.
+
+- `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. Can be a traditional auth key or OAuth client secret (tskey-client-xxx). If omitted, a link will be printed to manually register.
+- `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets.
 - `TSNET_FORCE_LOGIN=1`: Force re-login of the node. Useful during development.
 
 ### Docker Environment Variables
@@ -182,6 +195,8 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 | `TSIDP_LOG=<level>`                      | `-log <level>`             |
 | `TSIDP_DEBUG_TSNET=1`                    | `-debug-tsnet`             |
 | `TSIDP_DEBUG_ALL_REQUESTS=1`             | `-debug-all-requests`      |
+| `TS_AUTHKEY=<key>`                       | _(env var only)_           |
+| `TS_ADVERTISE_TAGS=<tags>`               | _(env var only)_           |
 
 ## Application Configuration Guides (WIP)
 
