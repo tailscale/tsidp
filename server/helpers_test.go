@@ -122,7 +122,7 @@ func normalizeMap(t *testing.T, m map[string]any) map[string]any {
 
 // marshalCapRules is a helper to convert stsCapRule slice to JSON for testing
 // Migrated from legacy/tsidp_test.go:2653-2661
-func marshalCapRules(rules []stsCapRule) []tailcfg.RawMessage {
+func marshalCapRules(rules []capRule) []tailcfg.RawMessage {
 	// UnmarshalCapJSON expects each rule to be a separate RawMessage
 	var msgs []tailcfg.RawMessage
 	for _, rule := range rules {

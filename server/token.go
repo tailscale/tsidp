@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -129,19 +130,6 @@ func (tc tailscaleClaims) toMap() map[string]any {
 	return m
 }
 
-// Capability rule types
-// Migrated from legacy/tsidp.go:779-790
-
-type capRule struct {
-	IncludeInUserInfo bool           `json:"includeInUserInfo"`
-	ExtraClaims       map[string]any `json:"extraClaims,omitempty"` // list of features peer is allowed to edit
-}
-
-type stsCapRule struct {
-	Users     []string `json:"users"`     // list of users allowed to access resources (supports "*" wildcard)
-	Resources []string `json:"resources"` // list of audience/resource URIs the user can access
-}
-
 // serveToken is the main /token endpoint handler
 // Migrated from legacy/tsidp.go:921-942
 func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +144,7 @@ func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method != "POST" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 
@@ -168,12 +156,13 @@ func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 		s.handleRefreshTokenGrant(w, r)
 	case "urn:ietf:params:oauth:grant-type:token-exchange":
 		if !s.enableSTS {
-			writeTokenEndpointError(w, http.StatusBadRequest, "unsupported_grant_type", "token exchange not enabled")
+			writeHTTPError(w, r, http.StatusBadRequest, ecUnsupportedGrant, "token exchange not enabled", nil)
 			return
 		}
 		s.serveTokenExchange(w, r)
 	default:
-		writeTokenEndpointError(w, http.StatusBadRequest, "unsupported_grant_type", "")
+		writeHTTPError(w, r, http.StatusBadRequest, ecUnsupportedGrant, "unsupported grant type",
+			fmt.Errorf("unsupported grant type %q", grantType))
 	}
 }
 
@@ -182,7 +171,7 @@ func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	if code == "" {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "code is required")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "code is required", nil)
 		return
 	}
 	s.mu.Lock()
@@ -192,16 +181,16 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 	}
 	s.mu.Unlock()
 	if !ok {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_grant", "code not found")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code not found", nil)
 		return
 	}
 	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
-		//log.Printf("XXX Error allowing relying party: %v", err)
-		writeTokenEndpointError(w, httpStatusCode, "invalid_client", err.Error())
+		writeHTTPError(w, r, httpStatusCode, ecInvalidClient, "client authentication failed", err)
 		return
 	}
 	if ar.RedirectURI != r.FormValue("redirect_uri") {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_grant", "redirect_uri mismatch")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "redirect_uri mismatch",
+			fmt.Errorf("got redirect_uri %q, want %q", r.FormValue("redirect_uri"), ar.RedirectURI))
 		return
 	}
 
@@ -209,12 +198,12 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 	if ar.CodeChallenge != "" {
 		codeVerifier := r.FormValue("code_verifier")
 		if codeVerifier == "" {
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "code_verifier is required")
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "code_verifier is required", nil)
 			return
 		}
 
 		if err := validateCodeVerifier(codeVerifier, ar.CodeChallenge, ar.CodeChallengeMethod); err != nil {
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_grant", err.Error())
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code verification failed", err)
 			return
 		}
 	}
@@ -225,15 +214,14 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 		// Validate requested resources using the same capability would be used for STS
 		validatedResources, err := s.validateResourcesForUser(ar.RemoteUser, resources)
 		if err != nil {
-			//log.Printf("Error validating resources: %v", err)
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "invalid resource")
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "invalid resource", err)
 			return
 		}
 		ar.Resources = validatedResources
 	}
 	// If no resources in token request, use the ones from authorization
 
-	s.issueTokens(w, ar)
+	s.issueTokens(w, r, ar)
 }
 
 // handleRefreshTokenGrant handles the refresh token grant type
@@ -241,7 +229,7 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request) {
 	rt := r.FormValue("refresh_token")
 	if rt == "" {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "refresh_token is required")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "refresh_token is required", nil)
 		return
 	}
 
@@ -255,14 +243,13 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 	s.mu.Unlock()
 
 	if !ok {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_grant", "invalid refresh token")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "invalid refresh token", nil)
 		return
 	}
 
 	// Validate client authentication
 	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
-		//log.Printf("Error allowing relying party: %v", err)
-		writeTokenEndpointError(w, httpStatusCode, "invalid_client", err.Error())
+		writeHTTPError(w, r, httpStatusCode, ecInvalidClient, "client authentication failed", err)
 		return
 	}
 
@@ -272,8 +259,7 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 		// Validate requested resources are a subset of original grant
 		validatedResources, err := s.validateResourcesForUser(ar.RemoteUser, resources)
 		if err != nil {
-			//log.Printf("Error validating resources: %v", err)
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "resource validation failed", err)
 			return
 		}
 
@@ -288,7 +274,7 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 					}
 				}
 				if !found {
-					writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "requested resource not in original grant")
+					writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "requested resource not in original grant", nil)
 					return
 				}
 			}
@@ -305,53 +291,53 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 	delete(s.refreshToken, rt)
 	s.mu.Unlock()
 
-	s.issueTokens(w, ar)
+	s.issueTokens(w, r, ar)
 }
 
 // serveTokenExchange implements the OIDC STS token exchange flow per RFC 8693
 // Migrated from legacy/tsidp.go:1012-1210
 func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "failed to parse form")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "failed to parse form", err)
 		return
 	}
 
 	// Validate required parameters
 	subjectToken := r.FormValue("subject_token")
 	if subjectToken == "" {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "subject_token is required")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "subject_token is required", nil)
 		return
 	}
 
 	subjectTokenType := r.FormValue("subject_token_type")
 	if subjectTokenType != "urn:ietf:params:oauth:token-type:access_token" {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "unsupported subject_token_type")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "unsupported subject_token_type", nil)
 		return
 	}
 
 	requestedTokenType := r.FormValue("requested_token_type")
 	if requestedTokenType != "" && requestedTokenType != "urn:ietf:params:oauth:token-type:access_token" {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "unsupported requested_token_type")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "unsupported requested_token_type", nil)
 		return
 	}
 
 	// Parse multiple audience parameters (RFC 8693 allows multiple)
 	audiences := r.Form["audience"]
 	if len(audiences) == 0 {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "audience is required")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "audience is required", nil)
 		return
 	}
 
 	// Identify the client performing the exchange
 	exchangingClientID := s.identifyClient(r)
 	if exchangingClientID == "" {
-		writeTokenEndpointError(w, http.StatusUnauthorized, "invalid_client", "invalid client credentials")
+		writeHTTPError(w, r, http.StatusUnauthorized, ecInvalidClient, "invalid client credentials", nil)
 		return
 	}
 
@@ -368,21 +354,20 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	ar, ok := s.accessToken[subjectToken]
 	s.mu.Unlock()
 	if !ok {
-		writeTokenEndpointError(w, http.StatusUnauthorized, "invalid_grant", "invalid subject token")
+		writeHTTPError(w, r, http.StatusUnauthorized, ecInvalidGrant, "invalid subject token", nil)
 		return
 	}
 
 	if ar.ValidTill.Before(time.Now()) {
-		writeTokenEndpointError(w, http.StatusUnauthorized, "invalid_grant", "subject token expired")
+		writeHTTPError(w, r, http.StatusUnauthorized, ecInvalidGrant, "subject token expired", nil)
 		return
 	}
 
 	// Check ACL grant for STS token exchange
 	who := ar.RemoteUser
-	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "tailscale.com/cap/tsidp")
+	rules, err := tailcfg.UnmarshalCapJSON[capRule](who.CapMap, "tailscale.com/cap/tsidp")
 	if err != nil {
-		//log.Printf("tsidp: failed to unmarshal STS capability: %v", err)
-		writeTokenEndpointError(w, http.StatusForbidden, "access_denied", fmt.Sprintf("failed to unmarshal STS capability: %s", err.Error()))
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "failed to unmarshal STS capability", err)
 		return
 	}
 
@@ -420,7 +405,7 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(allowedAudiences) == 0 {
-		writeTokenEndpointError(w, http.StatusForbidden, "access_denied", "access denied for requested audience")
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "access denied for requested audience", nil)
 		return
 	}
 
@@ -429,7 +414,7 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	if actorTokenParam := r.FormValue("actor_token"); actorTokenParam != "" {
 		actorTokenType := r.FormValue("actor_token_type")
 		if actorTokenType != "" && actorTokenType != "urn:ietf:params:oauth:token-type:access_token" {
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "unsupported actor_token_type")
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "unsupported actor_token_type", nil)
 			return
 		}
 
@@ -438,7 +423,7 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 		actorAR, ok := s.accessToken[actorTokenParam]
 		s.mu.Unlock()
 		if !ok || actorAR.ValidTill.Before(time.Now()) {
-			writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "invalid or expired actor_token")
+			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "invalid or expired actor_token", nil)
 			return
 		}
 
@@ -506,17 +491,16 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "internal server error")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "internal server error", err)
 	}
 }
 
 // issueTokens issues access and refresh tokens
 // Migrated from legacy/tsidp.go:1339-1473
-func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
+func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *AuthRequest) {
 	signer, err := s.oidcSigner()
 	if err != nil {
-		//log.Printf("Error getting signer: %v", err)
-		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "internal server error - could not get signer")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "internal server error - could not get signer", err)
 		return
 	}
 	jti := rands.HexString(32)
@@ -524,7 +508,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 
 	n := who.Node.View()
 	if n.IsTagged() {
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "tagged nodes not supported")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "tagged nodes not supported", nil)
 		return
 	}
 
@@ -596,15 +580,13 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 
 	rules, err := tailcfg.UnmarshalCapJSON[capRule](who.CapMap, tailcfg.PeerCapabilityTsIDP)
 	if err != nil {
-		//log.Printf("tsidp: failed to unmarshal capability: %v", err)
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "failed to unmarshal capability")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "failed to unmarshal capability", err)
 		return
 	}
 
 	tsClaimsWithExtra, err := withExtraClaims(tsClaims.toMap(), rules)
 	if err != nil {
-		//log.Printf("tsidp: failed to merge extra claims: %v", err)
-		writeTokenEndpointError(w, http.StatusBadRequest, "invalid_request", "failed to merge extra claims")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "failed to merge extra claims", err)
 		return
 	}
 
@@ -616,8 +598,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 	// Create an OIDC token using this issuer's signer.
 	token, err := jwt.Signed(signer).Claims(tsClaimsWithExtra).CompactSerialize()
 	if err != nil {
-		//log.Printf("Error getting token: %v", err)
-		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "error creating token")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "error creating JWT token", err)
 		return
 	}
 
@@ -633,6 +614,13 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 	mak.Set(&s.refreshToken, rt, &rtAuth)
 	s.mu.Unlock()
 
+	slog.Info("token issued",
+		slog.String("for", who.UserProfile.LoginName),
+		slog.String("uid", n.User().String()),
+		slog.String("client_id", ar.ClientID),
+		slog.String("redirect_uri", ar.RedirectURI),
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(oidcTokenResponse{
 		AccessToken:  at,
@@ -641,7 +629,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, ar *AuthRequest) {
 		IDToken:      token,
 		RefreshToken: rt,
 	}); err != nil {
-		writeTokenEndpointError(w, http.StatusInternalServerError, "server_error", "internal server error")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "internal server error", err)
 	}
 }
 
@@ -695,7 +683,7 @@ func (s *IDPServer) identifyClient(r *http.Request) string {
 // Migrated from legacy/tsidp.go:426-472
 func (s *IDPServer) validateResourcesForUser(who *apitype.WhoIsResponse, requestedResources []string) ([]string, error) {
 	// Check ACL grant using the same capability as we would use for STS token exchange
-	rules, err := tailcfg.UnmarshalCapJSON[stsCapRule](who.CapMap, "tailscale.com/cap/tsidp")
+	rules, err := tailcfg.UnmarshalCapJSON[capRule](who.CapMap, "tailscale.com/cap/tsidp")
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal capability: %w", err)
 	}
@@ -784,32 +772,18 @@ func generateCodeChallenge(verifier, method string) (string, error) {
 	}
 }
 
-// writeTokenEndpointError writes an RFC 6749 compliant token endpoint error response
-// Migrated from legacy/tsidp.go:1630-1639
-func writeTokenEndpointError(w http.ResponseWriter, statusCode int, errorCode, errorDescription string) {
-	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
-	w.WriteHeader(statusCode)
-	//log.Printf("XXX token endpoint error: %d > %s\n", statusCode, errorDescription)
-	json.NewEncoder(w).Encode(oauthErrorResponse{
-		Error:            errorCode,
-		ErrorDescription: errorDescription,
-	})
-}
-
 // serveIntrospect handles the /introspect endpoint for token introspection (RFC 7662)
 // Migrated from legacy/tsidp.go:1475-1602
 func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "tsidp: method not allowed", http.StatusMethodNotAllowed)
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 		return
 	}
 
 	// Parse the token parameter
 	token := r.FormValue("token")
 	if token == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid_request", "token is required")
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "token is required", nil)
 		return
 	}
 
@@ -919,7 +893,7 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to encode response", err)
 	}
 }
 

@@ -4,9 +4,15 @@
 package server
 
 import (
+	"log/slog"
 	"testing"
 	"time"
 )
+
+func init() {
+	// change from default INFO level to reduce noise in tests
+	slog.SetLogLoggerLevel(slog.LevelError)
+}
 
 // TestNew tests creation of a new IDPServer
 func TestNew(t *testing.T) {
@@ -110,7 +116,7 @@ func TestSetFunnelClients(t *testing.T) {
 	}
 }
 
-// TestCleanupExpiredTokens tests token cleanup  
+// TestCleanupExpiredTokens tests token cleanup
 // Enhanced migration combining legacy/tsidp_test.go:833-867 and legacy/tsidp_test.go:2310-2331
 // Tests cleanup of authorization codes, access tokens, and refresh tokens
 func TestCleanupExpiredTokens(t *testing.T) {

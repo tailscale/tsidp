@@ -14,7 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -37,7 +37,6 @@ import (
 // Command line flags
 // Migrated from legacy/tsidp.go:64-73
 var (
-	flagVerbose            = flag.Bool("verbose", false, "be verbose")
 	flagPort               = flag.Int("port", 443, "port to listen on")
 	flagLocalPort          = flag.Int("local-port", -1, "allow requests from localhost")
 	flagUseLocalTailscaled = flag.Bool("use-local-tailscaled", false, "use local tailscaled instead of tsnet")
@@ -45,7 +44,13 @@ var (
 	flagHostname           = flag.String("hostname", "idp", "tsnet hostname to use instead of idp")
 	flagDir                = flag.String("dir", "", "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", false, "enable OIDC STS token exchange support")
-	flagEnableDebug        = flag.Bool("enable-debug", false, "enable debug printing of requests to the server")
+
+	// application logging levels
+	flagLogLevel = flag.String("log", "info", "log levels: debug, info, warn, error")
+
+	// extended debugging information
+	flagDebugAllRequests = flag.Bool("debug-all-requests", false, "capture and print all HTTP requests and responses")
+	flagDebugTSNet       = flag.Bool("debug-tsnet", false, "enable tsnet.Server logging")
 )
 
 // main initializes and starts the tsidp server
@@ -54,7 +59,22 @@ func main() {
 	flag.Parse()
 	ctx := context.Background()
 	if !envknob.UseWIPCode() {
-		log.Fatal("cmd/tsidp is a work in progress and has not been security reviewed;\nits use requires TAILSCALE_USE_WIP_CODE=1 be set in the environment for now.")
+		slog.Error("cmd/tsidp is a work in progress and has not been security reviewed;\nits use requires TAILSCALE_USE_WIP_CODE=1 be set in the environment for now.")
+		os.Exit(1)
+	}
+
+	switch *flagLogLevel {
+	case "debug":
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	case "info":
+		slog.SetLogLoggerLevel(slog.LevelInfo)
+	case "warn":
+		slog.SetLogLoggerLevel(slog.LevelWarn)
+	case "error":
+		slog.SetLogLoggerLevel(slog.LevelError)
+	default:
+		slog.Error("unknown log level", slog.String("level", *flagLogLevel))
+		os.Exit(1)
 	}
 
 	var (
@@ -70,14 +90,15 @@ func main() {
 		lc = &local.Client{}
 		st, err = lc.StatusWithoutPeers(ctx)
 		if err != nil {
-			log.Fatalf("getting status: %v", err)
+			slog.Error("getting local.Client status", slog.Any("error", err))
+			os.Exit(1)
 		}
 		portStr := fmt.Sprint(*flagPort)
 		anySuccess := false
 		for _, ip := range st.TailscaleIPs {
 			ln, err := net.Listen("tcp", net.JoinHostPort(ip.String(), portStr))
 			if err != nil {
-				log.Printf("failed to listen on %v: %v", ip, err)
+				slog.Warn("net.Listen failed", slog.String("ip", ip.String()), slog.Any("error", err))
 				continue
 			}
 			anySuccess = true
@@ -87,18 +108,21 @@ func main() {
 			lns = append(lns, ln)
 		}
 		if !anySuccess {
-			log.Fatalf("failed to listen on any of %v", st.TailscaleIPs)
+			slog.Error("failed to listen on any ip", slog.Any("ips", st.TailscaleIPs))
+			os.Exit(1)
 		}
 
 		// tailscaled needs to be setting an HTTP header for funneled requests
 		// that older versions don't provide.
 		// TODO(naman): is this the correct check?
 		if *flagFunnel && !version.AtLeast(st.Version, "1.71.0") {
-			log.Fatalf("Local tailscaled not new enough to support -funnel. Update Tailscale or use tsnet mode.")
+			slog.Error("Local tailscaled not new enough to support -funnel. Update Tailscale or use tsnet mode.")
+			os.Exit(1)
 		}
 		cleanup, watcherChan, err = server.ServeOnLocalTailscaled(ctx, lc, st, uint16(*flagPort), *flagFunnel)
 		if err != nil {
-			log.Fatalf("could not serve on local tailscaled: %v", err)
+			slog.Error("could not serve on local tailscaled", slog.Any("error", err))
+			os.Exit(1)
 		}
 		defer cleanup()
 	} else {
@@ -107,29 +131,39 @@ func main() {
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
 		}
-		if *flagVerbose {
-			ts.Logf = log.Printf
+		if *flagDebugTSNet {
+			ts.Logf = func(format string, args ...any) {
+				cur := slog.SetLogLoggerLevel(slog.LevelDebug) // force debug if this option is on
+				slog.Debug(fmt.Sprintf(format, args...))
+				slog.SetLogLoggerLevel(cur)
+			}
 		}
 		st, err = ts.Up(ctx)
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("failed to start tsnet server", slog.Any("error", err))
+			os.Exit(1)
 		}
 		lc, err = ts.LocalClient()
 		if err != nil {
-			log.Fatalf("getting local client: %v", err)
+			slog.Error("failed to get local client", slog.Any("error", err))
+			os.Exit(1)
 		}
 		var ln net.Listener
 		if *flagFunnel {
 			if err := ipn.CheckFunnelAccess(uint16(*flagPort), st.Self); err != nil {
-				log.Fatalf("%v", err)
+				slog.Error("funnel access denied", slog.Any("error", err))
+				os.Exit(1)
 			}
 			ln, err = ts.ListenFunnel("tcp", fmt.Sprintf(":%d", *flagPort))
 		} else {
 			ln, err = ts.ListenTLS("tcp", fmt.Sprintf(":%d", *flagPort))
 		}
+
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("failed to listen", slog.Any("error", err))
+			os.Exit(1)
 		}
+
 		lns = append(lns, ln)
 	}
 
@@ -150,18 +184,20 @@ func main() {
 	// Load funnel clients from disk if they exist, regardless of whether funnel is enabled
 	// This ensures OIDC clients persist across restarts
 	if err := srv.LoadFunnelClients(); err != nil {
-		log.Fatalf("could not load funnel clients: %v", err)
+		slog.Error("could not load funnel clients", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	log.Printf("Running tsidp at %s ...", srv.ServerURL())
+	slog.Info("tsidp server started", slog.String("server_url", srv.ServerURL()))
 
 	if *flagLocalPort != -1 {
 		loopbackURL := fmt.Sprintf("http://localhost:%d", *flagLocalPort)
-		log.Printf("Also running tsidp at %s ...", loopbackURL)
+		slog.Info("Also running tsidp at loopback", slog.String("loopback_url", loopbackURL))
 		srv.SetLoopbackURL(loopbackURL)
 		ln, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *flagLocalPort))
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("failed to listen on loopback", slog.Any("error", err))
+			os.Exit(1)
 		}
 		lns = append(lns, ln)
 	}
@@ -178,9 +214,7 @@ func main() {
 			select {
 			case <-ticker.C:
 				srv.CleanupExpiredTokens()
-				if *flagVerbose {
-					log.Printf("Cleaned up expired tokens")
-				}
+				slog.Debug("Cleaned up expired tokens")
 			case <-cleanupCtx.Done():
 				return
 			}
@@ -188,7 +222,7 @@ func main() {
 	}()
 
 	var srvHandler http.Handler = srv
-	if *flagEnableDebug {
+	if *flagDebugAllRequests {
 		srvHandler = debugPrintRequest(srv) // Wrap the server with debug
 	}
 
@@ -208,15 +242,15 @@ func main() {
 	signal.Notify(exitChan, os.Interrupt)
 	select {
 	case <-exitChan:
-		log.Printf("interrupt, exiting")
+		slog.Info("interrupt, exiting")
 		return
 	case <-watcherChan:
 		if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
-			log.Printf("watcher closed, exiting")
+			slog.Info("watcher closed, exiting")
 			return
 		}
-		log.Fatalf("watcher error: %v", err)
-		return
+		slog.Error("watcher error", slog.Any("error", err))
+		os.Exit(1)
 	}
 }
 

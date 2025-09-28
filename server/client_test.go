@@ -119,7 +119,24 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 		isFunnel      bool
 		expectStatus  int
 		checkResponse func(t *testing.T, body []byte)
+
+		// Disable app cap override for this test to test for the deny-by-default behaviour
+		disableAppCapOverride bool
 	}{
+		{
+			name:   "Check access without app cap is denied",
+			method: "POST",
+			body: `{
+				"redirect_uris": ["https://example.com/callback"],
+				"client_name": "Test Client",
+				"grant_types": ["authorization_code"],
+				"response_types": ["code"]
+			}`,
+			expectStatus:          http.StatusForbidden,
+			disableAppCapOverride: true,
+			checkResponse:         nil,
+		},
+
 		{
 			name:   "POST request - verify JSON field names",
 			method: "POST",
@@ -232,7 +249,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			method:       "POST",
 			body:         `{"redirect_uris": ["https://example.com/callback"]}`,
 			isFunnel:     true,
-			expectStatus: http.StatusForbidden,
+			expectStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, body []byte) {
 				var errResp map[string]interface{}
 				if err := json.Unmarshal(body, &errResp); err != nil {
@@ -347,6 +364,9 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 				serverURL:     "https://idp.test.ts.net",
 				stateDir:      tempDir,
 				funnelClients: make(map[string]*FunnelClient),
+
+				// tt.disableAppCapOverride is true to test the deny-by-default behaviour
+				bypassAppCapCheck: !tt.disableAppCapOverride,
 			}
 
 			// Mock the storeFunnelClientsLocked function for testing
@@ -358,12 +378,13 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			}
 
 			req := httptest.NewRequest(tt.method, "/register", body)
+			req.Header.Add("Accept", "application/json")
 			if tt.isFunnel {
 				req.Header.Set("Tailscale-Funnel-Request", "true")
 			}
 
 			rr := httptest.NewRecorder()
-			s.serveDynamicClientRegistration(rr, req)
+			s.ServeHTTP(rr, req)
 
 			if rr.Code != tt.expectStatus {
 				t.Errorf("expected status %d, got %d\nBody: %s", tt.expectStatus, rr.Code, rr.Body.String())

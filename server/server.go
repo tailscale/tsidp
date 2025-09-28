@@ -14,7 +14,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -46,7 +46,7 @@ type IDPServer struct {
 	serverURL   string // "https://foo.bar.ts.net"
 	stateDir    string // directory for persisted state (keys, etc)
 	funnel      bool
-	localTSMode bool
+	localTSMode bool // use local tailscaled instead of tsnet
 	enableSTS   bool
 
 	lazyMux        lazy.SyncValue[*http.ServeMux]
@@ -58,6 +58,10 @@ type IDPServer struct {
 	accessToken   map[string]*AuthRequest  // keyed by random hex
 	refreshToken  map[string]*AuthRequest  // keyed by random hex
 	funnelClients map[string]*FunnelClient // keyed by client ID
+
+	// for bypassing application capability checks for testing
+	// see issue #44
+	bypassAppCapCheck bool
 }
 
 // AuthRequest represents an authorization request
@@ -135,14 +139,23 @@ type ActorClaim struct {
 	Actor    *ActorClaim `json:"act,omitempty"` // Nested for delegation chains
 }
 
-// FunnelClient represents an OAuth client accessing the IDP via Funnel
-
 // signingKey represents a JWT signing key
 // Migrated from legacy/tsidp.go:2336-2339
 type signingKey struct {
 	Kid uint64          `json:"kid"`
 	Key *rsa.PrivateKey `json:"-"`
 }
+
+// for use with writeHTTPError() errorCode parameter
+const (
+	ecAccessDenied     = "access_denied"
+	ecInvalidRequest   = "invalid_request"
+	ecInvalidClient    = "invalid_client"
+	ecInvalidGrant     = "invalid_grant"
+	ecServerError      = "server_error"
+	ecNotFound         = "not_found"
+	ecUnsupportedGrant = "unsupported_grant_type"
+)
 
 // New creates a new IDPServer instance
 func New(lc *local.Client, stateDir string, funnel, localTSMode, enableSTS bool) *IDPServer {
@@ -240,12 +253,11 @@ func (s *IDPServer) newMux() *http.ServeMux {
 	mux.HandleFunc("/userinfo", s.serveUserInfo)
 
 	// Register /register endpoint for Dynamic Client Registration
-	// Migrated from legacy/tsidp.go:683
-	mux.HandleFunc("/register", s.serveDynamicClientRegistration)
+	mux.HandleFunc("/register", s.addGrantAccessContext(s.serveDynamicClientRegistration))
 
 	// Register UI handler - must be last as it handles "/"
 	// Migrated from legacy/tsidp.go:685
-	mux.HandleFunc("/", s.handleUI)
+	mux.HandleFunc("/", s.addGrantAccessContext(s.handleUI))
 	return mux
 }
 
@@ -281,7 +293,7 @@ func (s *IDPServer) oidcPrivateKey() (*signingKey, error) {
 			if err := json.Unmarshal(b, &sk); err == nil {
 				return &sk, nil
 			} else {
-				log.Printf("Error unmarshaling key: %v", err)
+				slog.Error("Error unmarshaling oidc key", slog.Any("error", err))
 			}
 		}
 		id, k := mustGenRSAKey(2048)
@@ -289,10 +301,12 @@ func (s *IDPServer) oidcPrivateKey() (*signingKey, error) {
 		sk.Kid = id
 		b, err = json.Marshal(&sk)
 		if err != nil {
-			log.Fatalf("Error marshaling key: %v", err)
+			slog.Error("Error marshaling key", slog.Any("error", err))
+			os.Exit(1)
 		}
 		if err := os.WriteFile(keyPath, b, 0600); err != nil {
-			log.Fatalf("Error writing key: %v", err)
+			slog.Error("Error writing oid key", slog.Any("error", err))
+			os.Exit(1)
 		}
 		return &sk, nil
 	})
@@ -431,4 +445,63 @@ func ServeOnLocalTailscaled(ctx context.Context, lc *local.Client, st *ipnstate.
 	return func() { watcher.Close() }, watcherChan, nil
 }
 
-// getFunnelClientsPath returns the full path to the funnel clients file
+// writeHTTPError writes an appropriate HTTP error response based on the request's Accept header.
+// It logs the error with appropriate severity level and sends either JSON or plain text response.
+//
+// Parameters:
+//   - w: http.ResponseWriter to write the response
+//   - r: *http.Request to inspect Accept header and method/path for logging
+//   - statusCode: HTTP status code (e.g., 400, 401, 403, 500)
+//   - errorCode: Unique error code, use constants: ecAccessDenied, ecInvalidRequest, etc.
+//   - errorDescription: Human-readable error description sent in the response body
+//   - err: Optional underlying error for additional logging context
+func writeHTTPError(
+	w http.ResponseWriter,
+	r *http.Request,
+	statusCode int,
+	errorCode, errorDescription string,
+	err error,
+) {
+	args := []any{
+		slog.Int("status", statusCode),
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.String("code", errorCode),
+		slog.String("desc", errorDescription),
+	}
+
+	if err != nil {
+		args = append(args, slog.String("error", err.Error()))
+	}
+
+	switch statusCode {
+	case http.StatusForbidden, http.StatusUnauthorized:
+		slog.Warn("HTTP error", args...)
+	case http.StatusInternalServerError:
+		slog.Error("HTTP error", args...)
+	default:
+		slog.Debug("HTTP error", args...)
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.WriteHeader(statusCode)
+
+	acceptHeader := r.Header.Get("Accept")
+	switch {
+	case strings.Contains(acceptHeader, "application/json"):
+		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+		json.NewEncoder(w).Encode(httpErrorResponse{
+			Error:            errorCode,
+			ErrorDescription: errorDescription,
+		})
+	default:
+		w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+		fmt.Fprintf(w, "Error %d: %s - %s", statusCode, errorCode, errorDescription)
+	}
+}
+
+type httpErrorResponse struct {
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description,omitempty"`
+}

@@ -96,10 +96,6 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if r.URL.Path != "/.well-known/openid-configuration" {
-		http.Error(w, "tsidp: not found", http.StatusNotFound)
-		return
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	je := json.NewEncoder(w)
@@ -132,7 +128,7 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := je.Encode(metadata); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to encode metadata", err)
 	}
 }
 
@@ -147,10 +143,6 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	// early return for pre-flight OPTIONS requests.
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if r.URL.Path != "/.well-known/oauth-authorization-server" {
-		http.Error(w, "tsidp: not found", http.StatusNotFound)
 		return
 	}
 
@@ -185,18 +177,13 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := je.Encode(metadata); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to encode metadata", err)
 	}
 }
 
 // serveJWKS serves the JSON Web Key Set endpoint
 // Migrated from legacy/tsidp.go:1723-1750
 func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/.well-known/jwks.json" {
-		writeJSONError(w, http.StatusNotFound, "not_found", "endpoint not found")
-		return
-	}
-
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
 	h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
@@ -211,7 +198,7 @@ func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	sk, err := s.oidcPrivateKey()
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "server_error", "internal server error")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "internal server error", err)
 		return
 	}
 	// TODO(maisem): maybe only marshal this once and reuse?
@@ -228,7 +215,7 @@ func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "server_error", "internal server error")
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "internal server error", err)
 	}
 }
 
@@ -252,23 +239,4 @@ func isFunnelRequest(r *http.Request) bool {
 		return true
 	}
 	return false
-}
-
-// writeJSONError writes a JSON error response
-// Migrated from legacy/tsidp.go:1619-1626
-func writeJSONError(w http.ResponseWriter, statusCode int, errorCode, errorDescription string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(oauthErrorResponse{
-		Error:            errorCode,
-		ErrorDescription: errorDescription,
-	})
-}
-
-// oauthErrorResponse represents an OAuth 2.0 error response
-// Migrated from legacy/tsidp.go:1613-1617
-type oauthErrorResponse struct {
-	Error            string `json:"error"`
-	ErrorDescription string `json:"error_description,omitempty"`
-	ErrorURI         string `json:"error_uri,omitempty"`
 }

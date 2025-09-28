@@ -5,7 +5,7 @@ package server
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 )
 
 // withExtraClaims merges flattened extra claims from a list of capRule into the provided map[string]any,
@@ -27,7 +27,7 @@ func withExtraClaims(claimMap map[string]any, rules []capRule) (map[string]any, 
 	extra := flattenExtraClaims(rules)
 	for k, v := range extra {
 		if _, isProtected := protected[k]; isProtected {
-			log.Printf("Skip overwriting of existing claim %q", k)
+			slog.Info("Skip overwriting of existing claim", slog.String("claim", k))
 			return nil, fmt.Errorf("extra claim %q overwriting existing claim", k)
 		}
 
