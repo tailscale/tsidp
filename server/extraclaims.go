@@ -44,6 +44,9 @@ func flattenExtraClaims(rules []capRule) map[string]any {
 	// sets stores deduplicated stringified values for each claim key.
 	sets := make(map[string]map[string]struct{})
 
+	// originalValues stores the original value for scalar claims to preserve types
+	originalValues := make(map[string]any)
+
 	// isSlice tracks whether each claim was originally provided as a slice.
 	isSlice := make(map[string]bool)
 
@@ -57,6 +60,8 @@ func flattenExtraClaims(rules []capRule) map[string]any {
 				// Only mark as scalar if this is the first time we've seen this claim
 				if _, seen := isSlice[claim]; !seen {
 					isSlice[claim] = false
+					// Store the original value for scalar claims
+					originalValues[claim] = raw
 				}
 			}
 
@@ -76,13 +81,48 @@ func flattenExtraClaims(rules []capRule) map[string]any {
 			}
 			result[claim] = vals
 		} else {
-			// Claim was a scalar: return a single value
-			for val := range valSet {
-				result[claim] = val
-				break // only one value is expected
-			}
+			result[claim] = originalValues[claim]
 		}
 	}
 
 	return result
+}
+
+// addClaimValue adds a claim value to the deduplication set for a given claim key.
+// It accepts scalars (string, int, float64, bool), slices of strings or interfaces,
+// and recursively handles nested slices. Unsupported types are ignored with a log message.
+func addClaimValue(sets map[string]map[string]struct{}, claim string, val any) {
+	switch v := val.(type) {
+	case string, float64, int, int64, bool:
+		// Ensure the claim set is initialized
+		if sets[claim] == nil {
+			sets[claim] = make(map[string]struct{})
+		}
+		// Add the stringified scalar to the set
+		sets[claim][fmt.Sprintf("%v", v)] = struct{}{}
+
+	case []string:
+		// Ensure the claim set is initialized
+		if sets[claim] == nil {
+			sets[claim] = make(map[string]struct{})
+		}
+		// Add each string value to the set
+		for _, s := range v {
+			sets[claim][s] = struct{}{}
+		}
+
+	case []any:
+		// Recursively handle each item in the slice
+		for _, item := range v {
+			addClaimValue(sets, claim, item)
+		}
+
+	default:
+		// Log unsupported types for visibility and debugging
+		slog.Warn("unsupported claim type",
+			slog.String("claim", claim),
+			slog.Any("value", v),
+			slog.String("type", fmt.Sprintf("%T", v)),
+		)
+	}
 }

@@ -43,7 +43,7 @@ func TestFlattenExtraClaims(t *testing.T) {
 			},
 			expected: map[string]any{
 				"featureA": "read",
-				"featureB": "42",
+				"featureB": 42,
 			},
 		},
 		{
@@ -56,7 +56,7 @@ func TestFlattenExtraClaims(t *testing.T) {
 				},
 			},
 			expected: map[string]any{
-				"roles": []any{"admin", "user", "1"},
+				"roles": []any{"admin", "user", 1},
 			},
 		},
 		{
@@ -142,6 +142,20 @@ func TestFlattenExtraClaims(t *testing.T) {
 				"env": "prod", // not converted to slice
 			},
 		},
+		{
+			// see #62 - support for email_verified claim
+			name: "support boolean values",
+			input: []capRule{
+				{ExtraClaims: map[string]any{
+					"is_true":  true,
+					"is_false": false,
+				}},
+			},
+			expected: map[string]any{
+				"is_true":  true,
+				"is_false": false,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -152,7 +166,7 @@ func TestFlattenExtraClaims(t *testing.T) {
 			expectedNormalized := normalizeMap(t, tt.expected)
 
 			if !reflect.DeepEqual(gotNormalized, expectedNormalized) {
-				t.Errorf("mismatch\nGot:\n%s\nWant:\n%s", gotNormalized, expectedNormalized)
+				t.Errorf("mismatch\nGot:\n%v\nWant:\n%v", gotNormalized, expectedNormalized)
 			}
 		})
 	}

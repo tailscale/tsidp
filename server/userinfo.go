@@ -6,7 +6,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -133,44 +132,4 @@ func writeBearerError(w http.ResponseWriter, statusCode int, errorCode, errorDes
 	}
 	w.Header().Set("WWW-Authenticate", authHeader)
 	w.WriteHeader(statusCode)
-}
-
-// addClaimValue adds a claim value to the deduplication set for a given claim key.
-// It accepts scalars (string, int, float64), slices of strings or interfaces,
-// and recursively handles nested slices. Unsupported types are ignored with a log message.
-// Migrated from legacy/tsidp.go:845-875
-func addClaimValue(sets map[string]map[string]struct{}, claim string, val any) {
-	switch v := val.(type) {
-	case string, float64, int, int64:
-		// Ensure the claim set is initialized
-		if sets[claim] == nil {
-			sets[claim] = make(map[string]struct{})
-		}
-		// Add the stringified scalar to the set
-		sets[claim][fmt.Sprintf("%v", v)] = struct{}{}
-
-	case []string:
-		// Ensure the claim set is initialized
-		if sets[claim] == nil {
-			sets[claim] = make(map[string]struct{})
-		}
-		// Add each string value to the set
-		for _, s := range v {
-			sets[claim][s] = struct{}{}
-		}
-
-	case []any:
-		// Recursively handle each item in the slice
-		for _, item := range v {
-			addClaimValue(sets, claim, item)
-		}
-
-	default:
-		// Log unsupported types for visibility and debugging
-		slog.Warn("unsupported claim type",
-			slog.String("claim", claim),
-			slog.Any("value", v),
-			slog.String("type", fmt.Sprintf("%T", v)),
-		)
-	}
 }
