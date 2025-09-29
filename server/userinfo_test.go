@@ -5,6 +5,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -200,4 +201,58 @@ func TestExtraUserInfo(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserInfoRealishEmail(t *testing.T) {
+
+	// Create a fake tailscale Node
+	token := "valid-token"
+	node := &tailcfg.Node{
+		ID:   123,
+		Name: "user-node.test.ts.net.",
+		User: 456,
+	}
+
+	for _, loginName := range []string{"alice@github", "bob@passkey"} {
+		t.Run("Testing: "+loginName, func(t *testing.T) {
+			// Construct the remote user
+			profile := tailcfg.UserProfile{
+				LoginName: loginName,
+			}
+
+			remoteUser := &apitype.WhoIsResponse{
+				Node:        node,
+				UserProfile: &profile,
+			}
+
+			// Insert a valid token into the idpServer
+			s := &IDPServer{
+				accessToken: map[string]*AuthRequest{
+					token: {
+						ValidTill:  time.Now().Add(1 * time.Minute),
+						RemoteUser: remoteUser,
+					},
+				},
+			}
+			s.SetServerURL("test-idp.test.ts.net", 443)
+
+			// Construct request
+			req := httptest.NewRequest("GET", "/userinfo", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			rr := httptest.NewRecorder()
+
+			s.ServeHTTP(rr, req)
+
+			var resp map[string]any
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to parse JSON response: %v", err)
+			}
+
+			expected := fmt.Sprintf("%s.%s", profile.LoginName, s.hostname)
+			if resp["email"] != expected {
+				t.Errorf("expected email to be %s, got %s", expected, resp["email"])
+			}
+		})
+	}
+
 }

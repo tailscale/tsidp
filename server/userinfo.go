@@ -90,7 +90,7 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 	// Always include user profile information if available
 	ui.Name = ar.RemoteUser.UserProfile.DisplayName
 	ui.Picture = ar.RemoteUser.UserProfile.ProfilePicURL
-	ui.Email = ar.RemoteUser.UserProfile.LoginName
+	ui.Email = s.realishEmail(ar.RemoteUser.UserProfile.LoginName)
 	if username, _, ok := strings.Cut(ar.RemoteUser.UserProfile.LoginName, "@"); ok {
 		ui.Username = username
 	}

@@ -47,8 +47,11 @@ type tailscaleClaims struct {
 	NodeName   string                    `json:"node"`            // name of the node
 	Tailnet    string                    `json:"tailnet"`         // tailnet (like tail-scale.ts.net)
 
-	// Email is the "emailish" value with an '@' sign. It might not be a valid email.
-	Email  string         `json:"email,omitempty"` // user emailish (like "alice@github" or "bob@example.com")
+	// Email is the "emailish" value with an '@' sign. Emailish values like user@github or user@passkey
+	// will have the tsidp instance's hostname appened to them.
+	// Example: user@github becomes user@github.<tsidp-hostname>.<tsname>.ts.net
+	// Example: user@passkey becomes user@passkey.<tsidp-hostname>.<tsname>.ts.net
+	Email  string         `json:"email,omitempty"`
 	UserID tailcfg.UserID `json:"uid,omitempty"`
 
 	// PreferredUsername is the local part of Email (without '@' and domain).
@@ -563,7 +566,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 	for _, scope := range ar.Scopes {
 		switch scope {
 		case "email":
-			tsClaims.Email = who.UserProfile.LoginName
+			tsClaims.Email = s.realishEmail(who.UserProfile.LoginName)
 		case "profile":
 			if username, _, ok := strings.Cut(who.UserProfile.LoginName, "@"); ok {
 				tsClaims.PreferredUsername = username

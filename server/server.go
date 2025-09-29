@@ -43,6 +43,7 @@ type CtxConn struct{}
 type IDPServer struct {
 	lc          *local.Client
 	loopbackURL string
+	hostname    string // "foo.bar.ts.net"
 	serverURL   string // "https://foo.bar.ts.net"
 	stateDir    string // directory for persisted state (keys, etc)
 	funnel      bool
@@ -173,8 +174,13 @@ func New(lc *local.Client, stateDir string, funnel, localTSMode, enableSTS bool)
 }
 
 // SetServerURL sets the server URL
-func (s *IDPServer) SetServerURL(url string) {
-	s.serverURL = url
+func (s *IDPServer) SetServerURL(hostname string, port int) {
+	s.hostname = hostname
+	if port != 443 {
+		s.serverURL = fmt.Sprintf("https://%s:%d", hostname, port)
+	} else {
+		s.serverURL = fmt.Sprintf("https://%s", hostname)
+	}
 }
 
 // ServerURL returns the server URL
@@ -310,6 +316,16 @@ func (s *IDPServer) oidcPrivateKey() (*signingKey, error) {
 		}
 		return &sk, nil
 	})
+}
+
+// realishEmail converts emailish addresses ending in @github or @passkey to
+// a more email-like format by appending the hostname
+func (s *IDPServer) realishEmail(email string) string {
+	if strings.HasSuffix(email, "@github") || strings.HasSuffix(email, "@passkey") {
+		return fmt.Sprintf("%s.%s", email, s.hostname)
+	}
+
+	return email
 }
 
 // mustGenRSAKey generates an RSA key of the specified size

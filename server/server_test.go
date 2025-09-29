@@ -55,11 +55,11 @@ func TestNew(t *testing.T) {
 func TestSetServerURL(t *testing.T) {
 	srv := New(nil, "", false, false, false)
 
-	testURL := "https://test.example.com"
-	srv.SetServerURL(testURL)
+	hostname := "test.example.com"
+	srv.SetServerURL(hostname, 443)
 
-	if srv.ServerURL() != testURL {
-		t.Errorf("ServerURL() = %s, want %s", srv.ServerURL(), testURL)
+	if srv.ServerURL() != "https://test.example.com" {
+		t.Errorf("ServerURL() = %s, want %s", srv.ServerURL(), "https://test.example.com")
 	}
 }
 
@@ -254,5 +254,40 @@ func TestAuthRequestFields(t *testing.T) {
 
 	if len(ar.Scopes) != 2 {
 		t.Errorf("Scopes count = %d, want 2", len(ar.Scopes))
+	}
+}
+
+// TestRealishEmail tests the emalish values have the server's
+// hostname appended to them.
+// See: issue #58
+func TestRealishEmail(t *testing.T) {
+	srv := &IDPServer{
+		hostname: "test.ts.net",
+	}
+
+	tests := []struct {
+		name     string
+		email    string
+		expected string
+	}{
+		{
+			name:     "github email",
+			email:    "test@github",
+			expected: "test@github.test.ts.net",
+		},
+		{
+			name:     "passkey email",
+			email:    "test@passkey",
+			expected: "test@passkey.test.ts.net",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := srv.realishEmail(tt.email)
+			if result != tt.expected {
+				t.Errorf("realishEmail() = %v, want %v", result, tt.expected)
+			}
+		})
 	}
 }

@@ -175,11 +175,7 @@ func main() {
 		*flagEnableSTS,
 	)
 
-	if *flagPort != 443 {
-		srv.SetServerURL(fmt.Sprintf("https://%s:%d", strings.TrimSuffix(st.Self.DNSName, "."), *flagPort))
-	} else {
-		srv.SetServerURL(fmt.Sprintf("https://%s", strings.TrimSuffix(st.Self.DNSName, ".")))
-	}
+	srv.SetServerURL(strings.TrimSuffix(st.Self.DNSName, "."), *flagPort)
 
 	// Load funnel clients from disk if they exist, regardless of whether funnel is enabled
 	// This ensures OIDC clients persist across restarts
