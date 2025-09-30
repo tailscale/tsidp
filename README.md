@@ -85,15 +85,23 @@ $ TAILSCALE_USE_WIP_CODE=1 TS_AUTHKEY={YOUR_TAILSCALE_AUTHKEY} TSNET_FORCE_LOGIN
 > [!IMPORTANT]
 > Access to the admin UI and dynamic client registration endpoints are **denied** by default.
 
-To access the admin UI and dynamic client registration endpoints an [Application capability grant](https://tailscale.com/kb/1537/grants-app-capabilities) must be set in the the [Tailscale console](https://login.tailscale.com/admin/acls/).
+> [!WARNING]
+> tsidp's application capability schema are still in development and may change at anytime.
 
-This is a permissive grant that is suitable for testing purposes:
+- Set an [Application capability](https://tailscale.com/kb/1537/grants-app-capabilities) to grant access to the admin UI and DCR endpoints.
+- Configure grants in the [Tailscale console](https://login.tailscale.com/admin/acls/).
+- App capability grants are per request and updated immediately. No need to restart tsidp.
 
-```json
+### Example
+
+```hujson
 "grants": [
   {
+    // Very permissive and suitable only for testing.
     "src": ["*"],
     "dst": ["*"],
+
+    // Example of a grant for tsidp:
     "app": {
       "tailscale.com/cap/tsidp": [
         {
@@ -106,6 +114,19 @@ This is a permissive grant that is suitable for testing purposes:
           // Secure Token Service (STS) controls
           "users":     ["*"],
           "resources": ["*"],
+
+          // extraClaims are included in the id_token
+          // recommend: keep this small and simple
+          "extraClaims": {
+            "bools": true,
+            "strings": "Mon Jan 2 15:04:05 MST 2006",
+            "numbers": 180,
+            "array1": [1,2,3],
+            "array2": ["one", "two", "three"]
+          },
+
+          // include extraClaims data in /userinfo response
+          "includeInUserInfo": true,
         },
       ],
     },
@@ -173,6 +194,7 @@ tsidp can be used as IdP server for any application that supports custom OIDC pr
 - [Proxmox](docs/proxmox/README.md)
 
 ### TODOs
+
 - (TODO) Grafana
 - (TODO) open-webui
 - (TODO) Jellyfin
