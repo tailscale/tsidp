@@ -73,42 +73,7 @@ type IDTokenHeader struct {
 }
 
 // IDTokenClaims holds the payload part of the ID Token JWT.
-type IDTokenClaims struct {
-	Issuer      string   `json:"iss"`
-	Subject     string   `json:"sub"`
-	Audience    []string `json:"aud"` // Can be string or array, handled in custom unmarshal
-	Expiry      int64    `json:"exp"`
-	IssuedAt    int64    `json:"iat"`
-	Nonce       string   `json:"nonce"`
-	Email       string   `json:"email"`
-	Name        string   `json:"name"`
-	rawAudience interface{}
-}
-
-// UnmarshalJSON handles the case where 'aud' can be a string or an array of strings.
-func (c *IDTokenClaims) UnmarshalJSON(data []byte) error {
-	type Alias IDTokenClaims
-	aux := &struct {
-		Audience interface{} `json:"aud"`
-		*Alias
-	}{
-		Alias: (*Alias)(c),
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	switch v := aux.Audience.(type) {
-	case string:
-		c.Audience = []string{v}
-	case []interface{}:
-		c.Audience = make([]string, len(v))
-		for i, val := range v {
-			c.Audience[i] = fmt.Sprintf("%v", val)
-		}
-	}
-	return nil
-}
+type IDTokenClaims map[string]any
 
 // JSONWebKey represents a single public key in a JWKS.
 type JSONWebKey struct {
@@ -317,7 +282,11 @@ func main() {
 		fmt.Printf("❌ Error verifying ID Token: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("✅ Success. ID Token is valid. User Subject (sub): %s\n", idTokenClaims.Subject)
+	if sub, ok := idTokenClaims["sub"].(string); ok {
+		fmt.Printf("✅ Success. ID Token is valid. User Subject (sub): %s\n", sub)
+	} else {
+		fmt.Printf("✅ Success. ID Token is valid.\n")
+	}
 
 	// Step 6: Call the introspection_endpoint to get information about the token
 	fmt.Println("\nStep 6: Introspecting the access token...")
@@ -468,7 +437,7 @@ func exchangeCodeForTokens(ctx context.Context, code string) (*TokenResponse, er
 }
 
 // verifyIDToken manually parses and validates a JWT ID token.
-func verifyIDToken(ctx context.Context, rawToken string, meta *ProviderMetadata, clientID string) (*IDTokenClaims, error) {
+func verifyIDToken(ctx context.Context, rawToken string, meta *ProviderMetadata, clientID string) (IDTokenClaims, error) {
 	// 1. Split the token into 3 parts: header, payload, signature
 	parts := strings.Split(rawToken, ".")
 	if len(parts) != 3 {
@@ -508,30 +477,43 @@ func verifyIDToken(ctx context.Context, rawToken string, meta *ProviderMetadata,
 	fmt.Println("✅ Signature is valid.")
 
 	// 5. Validate the claims
-	if claims.Issuer != meta.Issuer {
-		return nil, fmt.Errorf("issuer mismatch: expected %s, got %s", meta.Issuer, claims.Issuer)
+	issuer, _ := claims["iss"].(string)
+	if issuer != meta.Issuer {
+		return nil, fmt.Errorf("issuer mismatch: expected %s, got %s", meta.Issuer, issuer)
 	}
-	if time.Unix(claims.Expiry, 0).Before(time.Now()) {
+
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return nil, errors.New("exp claim missing or invalid")
+	}
+	if time.Unix(int64(exp), 0).Before(time.Now()) {
 		return nil, errors.New("token has expired")
 	}
 
+	// Handle audience as either string or array
 	audMatch := false
-	for _, aud := range claims.Audience {
-		if aud == clientID {
-			audMatch = true
-			break
+	switch aud := claims["aud"].(type) {
+	case string:
+		audMatch = (aud == clientID)
+	case []interface{}:
+		for _, a := range aud {
+			if audStr, ok := a.(string); ok && audStr == clientID {
+				audMatch = true
+				break
+			}
 		}
 	}
 	if !audMatch {
 		return nil, fmt.Errorf("audience mismatch: token not intended for this client")
 	}
 
-	if claims.Nonce != lastNonce {
-		return nil, fmt.Errorf("nonce mismatch: expected %s, got %s", lastNonce, claims.Nonce)
+	nonce, _ := claims["nonce"].(string)
+	if nonce != lastNonce {
+		return nil, fmt.Errorf("nonce mismatch: expected %s, got %s", lastNonce, nonce)
 	}
 	fmt.Println("✅ All claims are valid.")
 
-	return &claims, nil
+	return claims, nil
 }
 
 func fetchJWKS(ctx context.Context, jwksURI string) (*JSONWebKeySet, error) {
