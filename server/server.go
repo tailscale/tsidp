@@ -286,7 +286,6 @@ func (s *IDPServer) oidcSigner() (jose.Signer, error) {
 }
 
 // oidcPrivateKey returns the private key used for signing JWT tokens
-// Migrated from legacy/tsidp.go:1698-1721
 func (s *IDPServer) oidcPrivateKey() (*signingKey, error) {
 	return s.lazySigningKey.GetErr(func() (*signingKey, error) {
 		var sk signingKey
@@ -299,20 +298,24 @@ func (s *IDPServer) oidcPrivateKey() (*signingKey, error) {
 			if err := json.Unmarshal(b, &sk); err == nil {
 				return &sk, nil
 			} else {
-				slog.Error("Error unmarshaling oidc key", slog.Any("error", err))
+				slog.Warn("Error unmarshaling oidc key, recreating it", slog.Any("error", err))
 			}
 		}
-		id, k := mustGenRSAKey(2048)
+		id, k, err := mustGenRSAKey(2048)
+		if err != nil {
+			slog.Error("Error generating RSA key", slog.Any("error", err))
+			return nil, fmt.Errorf("could not generate rsa key: %s", err.Error())
+		}
 		sk.Key = k
 		sk.Kid = id
 		b, err = json.Marshal(&sk)
 		if err != nil {
-			slog.Error("Error marshaling key", slog.Any("error", err))
-			os.Exit(1)
+			slog.Error("Error marshaling signing key", slog.Any("error", err))
+			return nil, fmt.Errorf("could not marshal signing key, %s", err.Error())
 		}
 		if err := os.WriteFile(keyPath, b, 0600); err != nil {
-			slog.Error("Error writing oid key", slog.Any("error", err))
-			os.Exit(1)
+			slog.Error("Error writing oidc key", slog.Any("error", err))
+			return nil, fmt.Errorf("could not write oidc key, %s", err.Error())
 		}
 		return &sk, nil
 	})
@@ -329,17 +332,12 @@ func (s *IDPServer) realishEmail(email string) string {
 }
 
 // mustGenRSAKey generates an RSA key of the specified size
-// Migrated from legacy/tsidp.go:2307-2329
-func mustGenRSAKey(bits int) (kid uint64, k *rsa.PrivateKey) {
-	var err error
+func mustGenRSAKey(bits int) (kid uint64, k *rsa.PrivateKey, err error) {
 	k, err = rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
-		panic(err)
+		return
 	}
 	kid, err = readUint64(rand.Reader)
-	if err != nil {
-		panic(err)
-	}
 	return
 }
 
