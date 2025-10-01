@@ -24,6 +24,16 @@ import (
 	"tailscale.com/util/rands"
 )
 
+const (
+	TokenDuration        = 5 * time.Minute
+	RefreshTokenDuration = 30 * 24 * time.Hour
+
+	// NotValidBeforeClockSkew is the delta between the nbf and iat
+	// claims to account for clock skew between servers and clients
+	// 5 minutes is a typical value with 10 seconds being a common minimum
+	NotValidBeforeClockSkew = 5 * time.Minute
+)
+
 // Token endpoint types
 // Migrated from legacy/tsidp.go:1604-1616
 
@@ -440,6 +450,9 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 
 	// Generate new access token
 	newAccessToken := rands.HexString(32)
+	iat := time.Now()
+	nbf := iat.Add(-NotValidBeforeClockSkew)
+	exp := iat.Add(TokenDuration)
 
 	// Create new auth request with proper metadata for exchanged token
 	newAR := &AuthRequest{
@@ -448,7 +461,9 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 		OriginalClientID: ar.ClientID,
 		ExchangedBy:      exchangingClientID,
 		Audiences:        allowedAudiences,
-		ValidTill:        time.Now().Add(5 * time.Minute),
+		IssuedAt:         iat,
+		ValidTill:        exp,
+		NotValidBefore:   nbf,
 		RemoteUser:       who,
 		Resources:        allowedAudiences, // RFC 8707 resource indicators
 		Scopes:           ar.Scopes,        // Preserve original scopes
@@ -499,7 +514,6 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 }
 
 // issueTokens issues access and refresh tokens
-// Migrated from legacy/tsidp.go:1339-1473
 func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *AuthRequest) {
 	signer, err := s.oidcSigner()
 	if err != nil {
@@ -514,9 +528,6 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "tagged nodes not supported", nil)
 		return
 	}
-
-	now := time.Now()
-	_, tcd, _ := strings.Cut(n.Name(), ".")
 
 	// Build audience claim - for exchanged tokens use audiences, otherwise use clientID + resources
 	var audience jwt.Audience
@@ -543,14 +554,21 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		}
 	}
 
+	// values for exp, nbp and iat claims
+	iat := time.Now()
+	exp := iat.Add(TokenDuration)
+	nbf := iat.Add(-NotValidBeforeClockSkew)
+
+	_, tcd, _ := strings.Cut(n.Name(), ".")
+
 	tsClaims := tailscaleClaims{
 		Claims: jwt.Claims{
 			Audience:  audience,
-			Expiry:    jwt.NewNumericDate(now.Add(5 * time.Minute)),
+			IssuedAt:  jwt.NewNumericDate(iat),
+			Expiry:    jwt.NewNumericDate(exp),
+			NotBefore: jwt.NewNumericDate(nbf),
 			ID:        jti,
-			IssuedAt:  jwt.NewNumericDate(now),
 			Issuer:    s.serverURL,
-			NotBefore: jwt.NewNumericDate(now),
 			Subject:   n.User().String(),
 		},
 		Nonce:     ar.Nonce,
@@ -605,15 +623,20 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		return
 	}
 
+	// Add new access token and refresh token to the token store
 	at := rands.HexString(32)
 	rt := rands.HexString(32)
+
 	s.mu.Lock()
-	ar.ValidTill = now.Add(5 * time.Minute)
+	ar.IssuedAt = iat
+	ar.ValidTill = exp
+	ar.NotValidBefore = nbf
 	ar.JTI = jti // Store the JWT ID for introspection
 	mak.Set(&s.accessToken, at, ar)
-	// Create a new authRequest for refresh token with longer validity
-	rtAuth := *ar                                   // copy the authRequest
-	rtAuth.ValidTill = now.Add(30 * 24 * time.Hour) // 30 days
+
+	// Create a refresh token from the access token with longer validity
+	rtAuth := *ar // copy the authRequest
+	rtAuth.ValidTill = iat.Add(RefreshTokenDuration)
 	mak.Set(&s.refreshToken, rt, &rtAuth)
 	s.mu.Unlock()
 
@@ -831,8 +854,8 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 		resp["active"] = true
 		resp["client_id"] = ar.ClientID
 		resp["exp"] = ar.ValidTill.Unix()
-		resp["iat"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // issued 5 min before expiry
-		resp["nbf"] = ar.ValidTill.Add(-5 * time.Minute).Unix() // not before time (same as iat)
+		resp["iat"] = ar.IssuedAt.Unix()
+		resp["nbf"] = ar.NotValidBefore.Unix()
 		resp["token_type"] = "Bearer"
 		resp["iss"] = s.serverURL
 

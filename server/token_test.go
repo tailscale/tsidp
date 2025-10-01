@@ -349,7 +349,6 @@ func TestIntrospectWithResources(t *testing.T) {
 }
 
 // TestIntrospectionRFC7662Compliance tests RFC 7662 compliance
-// Migrated from legacy/tsidp_test.go:2433-2512
 func TestIntrospectionRFC7662Compliance(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
@@ -359,8 +358,11 @@ func TestIntrospectionRFC7662Compliance(t *testing.T) {
 
 	// Create a token with all fields populated
 	activeToken := "test-token-rfc-compliance"
+	now := time.Now()
 	s.accessToken[activeToken] = &AuthRequest{
-		ValidTill: time.Now().Add(10 * time.Minute),
+		ValidTill:      now.Add(10 * time.Minute),
+		IssuedAt:       now,
+		NotValidBefore: now.Add(-NotValidBeforeClockSkew),
 		FunnelRP: &FunnelClient{
 			ID:     "test-client",
 			Secret: "test-secret",
@@ -443,12 +445,14 @@ func TestIntrospectionRFC7662Compliance(t *testing.T) {
 		t.Errorf("expected jti to be 'unique-jwt-id-12345', got: %v", resp["jti"])
 	}
 
-	// Check that nbf is set and equals iat
+	// Check that nbf is set and less than iat
 	if nbf, ok := resp["nbf"].(float64); ok {
 		if iat, ok := resp["iat"].(float64); ok {
-			if nbf != iat {
-				t.Errorf("expected nbf to equal iat, got nbf=%v, iat=%v", nbf, iat)
+			if nbf >= iat {
+				t.Errorf("expected nbf to be less than iat, got nbf=%v, iat=%v", nbf, iat)
 			}
+		} else {
+			t.Error("iat claim missing or wrong type")
 		}
 	} else {
 		t.Error("nbf claim missing or wrong type")

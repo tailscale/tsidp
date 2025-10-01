@@ -282,6 +282,30 @@ func main() {
 		fmt.Printf("❌ Error verifying ID Token: %v\n", err)
 		os.Exit(1)
 	}
+
+	iat, ok := idTokenClaims["iat"].(float64)
+	if !ok {
+		fmt.Printf("❌ Error: invalid 'iat' claim.: %v\n", err)
+		os.Exit(1)
+	}
+	exp, ok := idTokenClaims["exp"].(float64)
+	if !ok {
+		fmt.Printf("❌ Error: invalid 'exp' claim.: %v\n", err)
+		os.Exit(1)
+	}
+	nbf, ok := idTokenClaims["nbf"].(float64)
+	if !ok {
+		fmt.Printf("❌ Error: invalid 'nbf' claim.: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !(nbf < iat && iat < exp) {
+		fmt.Printf("❌ Error: ID token expiry times invalid: nbf (%v) < iat (%v) < exp(%v)\n",
+			int(nbf), int(iat), int(exp),
+		)
+		os.Exit(1)
+	}
+
 	if sub, ok := idTokenClaims["sub"].(string); ok {
 		fmt.Printf("✅ Success. ID Token is valid. User Subject (sub): %s\n", sub)
 	} else {

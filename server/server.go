@@ -66,7 +66,6 @@ type IDPServer struct {
 }
 
 // AuthRequest represents an authorization request
-// Migrated from legacy/tsidp.go:325-387
 type AuthRequest struct {
 	// localRP is true if the request is from a relying party running on the
 	// same machine as the idp server. It is mutually exclusive with rpNodeID
@@ -116,6 +115,12 @@ type AuthRequest struct {
 	// validTill is the time until which the token is valid.
 	// Authorization codes expire after 5 minutes per OAuth 2.0 best practices (RFC 6749 recommends max 10 minutes).
 	ValidTill time.Time
+
+	// IssuedAt is the time when the token was issued
+	IssuedAt time.Time
+
+	// NotValidBefore is the time before which the token is not valid yet
+	NotValidBefore time.Time
 
 	// jti is the unique identifier for the JWT token (JWT ID).
 	// This is used for token introspection to return the jti claim.
