@@ -301,7 +301,7 @@ func (s *IDPServer) oidcPrivateKey() (*signingKey, error) {
 				slog.Warn("Error unmarshaling oidc key, recreating it", slog.Any("error", err))
 			}
 		}
-		id, k, err := mustGenRSAKey(2048)
+		id, k, err := genRSAKey(2048)
 		if err != nil {
 			slog.Error("Error generating RSA key", slog.Any("error", err))
 			return nil, fmt.Errorf("could not generate rsa key: %s", err.Error())
@@ -331,8 +331,8 @@ func (s *IDPServer) realishEmail(email string) string {
 	return email
 }
 
-// mustGenRSAKey generates an RSA key of the specified size
-func mustGenRSAKey(bits int) (kid uint64, k *rsa.PrivateKey, err error) {
+// genRSAKey generates an RSA key of the specified size
+func genRSAKey(bits int) (kid uint64, k *rsa.PrivateKey, err error) {
 	k, err = rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		return
