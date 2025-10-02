@@ -40,6 +40,9 @@ jobs:
 
       - name: Determine docker image tags
         id: image_tags
+        env:
+          TAG: ${{ github.event.inputs.tag }}
+          REF: ${{ github.ref }}
         run: |
           # For PRs to this file tag the container "pull_request_test"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -49,14 +52,12 @@ jobs:
 
           # For tag push: use the tag name and also push "latest"
           if [ "${{ github.event_name }}" = "push" ]; then
-            REF="${{ github.ref }}"
             TAG="${REF#refs/tags/}"
             echo "tags=ghcr.io/tailscale/tsidp:${TAG},ghcr.io/tailscale/tsidp:latest" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           # For workflow_dispatch: use the provided tag
-          TAG="${{ github.event.inputs.tag }}"
           echo "tags=ghcr.io/tailscale/tsidp:${TAG}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
