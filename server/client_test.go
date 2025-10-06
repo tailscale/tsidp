@@ -647,6 +647,9 @@ func TestDeleteClient(t *testing.T) {
 		serverURL:     "https://idp.test.ts.net",
 		stateDir:      tempDir,
 		funnelClients: make(map[string]*FunnelClient),
+
+		// Disable app cap for this test to test for the deny-by-default behaviour
+		bypassAppCapCheck: true,
 	}
 
 	// Create test clients
@@ -674,7 +677,7 @@ func TestDeleteClient(t *testing.T) {
 	req := httptest.NewRequest("DELETE", "/clients/test-client-1", nil)
 	rr := httptest.NewRecorder()
 
-	s.serveDeleteClient(rr, req, "test-client-1")
+	s.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNoContent {
 		t.Errorf("expected status 204, got %d", rr.Code)
@@ -698,6 +701,9 @@ func TestGetClientsList(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
 		funnelClients: make(map[string]*FunnelClient),
+
+		// Disable app cap for this test to test for the deny-by-default behaviour
+		bypassAppCapCheck: true,
 	}
 
 	// Add test clients
@@ -722,7 +728,7 @@ func TestGetClientsList(t *testing.T) {
 	req := httptest.NewRequest("GET", "/clients/", nil)
 	rr := httptest.NewRecorder()
 
-	s.serveGetClientsList(rr, req)
+	s.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
@@ -766,6 +772,9 @@ func TestServeNewClient(t *testing.T) {
 		serverURL:     "https://idp.test.ts.net",
 		stateDir:      tempDir,
 		funnelClients: make(map[string]*FunnelClient),
+
+		// Disable app cap for this test to test for the deny-by-default behaviour
+		bypassAppCapCheck: true,
 	}
 
 	// Test creating a new client via form data
@@ -776,7 +785,7 @@ func TestServeNewClient(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 
-	s.serveNewClient(rr, req)
+	s.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d\nBody: %s", rr.Code, rr.Body.String())

@@ -126,6 +126,19 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	access, ok := r.Context().Value(appCapCtxKey).(*accessGrantedRules)
+	if !ok {
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "application capability not found", nil)
+		return
+	}
+
+	// require the same level of access as the main admin UI.
+	// Note: the admin UI has its own endpoints /, /new, /edit/{id}, for managing clients.
+	if !access.allowAdminUI {
+		writeHTTPError(w, r, http.StatusForbidden, ecAccessDenied, "application capability not granted", nil)
+		return
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/clients/")
 	if path == "new" {
 		s.serveNewClient(w, r)
