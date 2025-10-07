@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
@@ -523,4 +524,23 @@ func writeHTTPError(
 type httpErrorResponse struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description,omitempty"`
+}
+
+// isFunnelRequest checks if the request is coming through Tailscale Funnel
+func isFunnelRequest(r *http.Request) bool {
+	// If we're funneling through the local tailscaled, it will set this HTTP header
+	if r.Header.Get("Tailscale-Funnel-Request") != "" {
+		return true
+	}
+
+	// If the funneled connection is from tsnet, then the net.Conn will be of type ipn.FunnelConn
+	netConn := r.Context().Value(CtxConn{})
+	// if the conn is wrapped inside TLS, unwrap it
+	if tlsConn, ok := netConn.(*tls.Conn); ok {
+		netConn = tlsConn.NetConn()
+	}
+	if _, ok := netConn.(*ipn.FunnelConn); ok {
+		return true
+	}
+	return false
 }
