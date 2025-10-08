@@ -120,6 +120,11 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	parsedURL, err := url.Parse(redirectURI)
+	if err != nil {
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "invalid redirect URI", err)
+		return
+	}
 
 	s.mu.Lock()
 	mak.Set(&s.code, code, ar)
@@ -129,11 +134,6 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	queryString.Set("code", code)
 	if state := uq.Get("state"); state != "" {
 		queryString.Set("state", state)
-	}
-	parsedURL, err := url.Parse(redirectURI)
-	if err != nil {
-		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "invalid redirect URI", err)
-		return
 	}
 	parsedURL.RawQuery = queryString.Encode()
 	u := parsedURL.String()
