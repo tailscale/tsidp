@@ -32,7 +32,7 @@
         </div>
         {{end}}
 
-        {{if and .Secret .IsNew}}
+        {{if and .Secret .JustCreated}}
         <div class="client-info">
           <h3>Client Created Successfully!</h3>
           <p class="warning">⚠️ Save both the Client ID and Secret now! The secret will not be shown again.</p>
@@ -76,6 +76,7 @@
               value="{{.Name}}" 
               placeholder="e.g., My Application"
               class="form-input"
+              {{if .JustCreated}}readonly{{end}}
             >
             <div class="form-help">
               A descriptive name for this OIDC client (optional).
@@ -91,6 +92,7 @@
               class="form-input"
               rows="4"
               required
+              {{if .JustCreated}}readonly{{end}}
             >{{joinRedirectURIs .RedirectURIs}}</textarea>
             <div class="form-help">
               Enter one redirect URI per line. Users will be redirected to one of these URLs after authentication.
@@ -113,9 +115,14 @@
           {{end}}
 
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary">
-              {{if .IsNew}}Create Client{{else}}Update Client{{end}}
-            </button>
+            {{if .JustCreated}}
+              <input type="hidden" name="just_created" value="true">
+              <a href="/" class="btn btn-secondary">← Back to Clients</a>
+            {{else}}
+              <button type="submit" class="btn btn-primary">
+                {{if .IsNew}}Create Client{{else}}Update Client{{end}}
+              </button>
+            {{end}}
             
             {{if .IsEdit}}
             <button type="submit" name="action" value="regenerate_secret" class="btn btn-warning" 

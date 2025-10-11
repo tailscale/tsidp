@@ -125,6 +125,11 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if r.FormValue("just_created") == "true" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+
 		name := strings.TrimSpace(r.FormValue("name"))
 		redirectURIsText := strings.TrimSpace(r.FormValue("redirect_uris"))
 		redirectURIs := splitRedirectURIs(redirectURIsText)
@@ -176,6 +181,7 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 			RedirectURIs: redirectURIs,
 			Secret:       clientSecret,
 			IsNew:        true,
+			JustCreated:  true,
 		}
 		s.renderFormSuccess(w, r, successData, "Client created successfully! Save the client secret - it won't be shown again.")
 		return
@@ -327,6 +333,7 @@ type clientDisplayData struct {
 	RedirectURIs []string
 	Secret       string
 	HasSecret    bool
+	JustCreated  bool
 	IsNew        bool
 	IsEdit       bool
 	Success      string
