@@ -41,10 +41,11 @@
       formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
 
       packages = eachSystem (pkgs: {
-        default = pkgs.buildGo124Module {
+        tsidp = pkgs.buildGo124Module {
           pname = "tsidp";
           version = if (self ? shortRev) then self.shortRev else "dev";
           src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
+          meta.mainProgram = "tsidp";
           ldflags =
             let
               tsVersion =
@@ -59,7 +60,13 @@
             ];
           vendorHash = "sha256-obtcJTg7V4ij3fGVmZMD7QQwKJX6K5PPslpM1XKCk9Q="; # SHA based on vendoring go.mod
         };
+
+        default = self.packages.${pkgs.system}.tsidp;
       });
+
+      overlays.default = final: prev: {
+        tsidp = self.packages.${final.system}.tsidp;
+      };
 
       devShells = eachSystem (pkgs: {
         default = pkgs.mkShell {
@@ -95,12 +102,18 @@
             ;
 
           cfg = config.services.tsidp;
+
+          stateDir = "/var/lib/tsidp";
         in
         {
           options.services.tsidp = {
             enable = mkEnableOption "tsidp server";
 
-            package = mkPackageOption pkgs "tsidp" { };
+            package = mkOption {
+              type = lib.types.package;
+              default = self.packages.${pkgs.system}.tsidp;
+              description = "Package to use for the tsidp service.";
+            };
 
             environmentFile = mkOption {
               type = nullOr lib.types.path;
@@ -225,7 +238,7 @@
                 ];
 
                 environment = {
-                  HOME = "/var/lib/tsidp";
+                  HOME = stateDir;
                   TAILSCALE_USE_WIP_CODE = "1"; # Needed while tsidp is in development (< v1.0.0).
                 };
 
@@ -243,6 +256,7 @@
                         log = cfg.settings.logLevel;
                         debug-all-requests = cfg.settings.debugAllRequests;
                         debug-tsnet = cfg.settings.debugTsnet;
+                        dir = stateDir;
                       };
                     in
                     "${getExe cfg.package} ${args}";
@@ -250,8 +264,8 @@
                   RestartSec = "15";
 
                   DynamicUser = true;
-                  StateDirectory = "tsidp";
-                  WorkingDirectory = "/var/lib/tsidp";
+                  StateDirectory = baseNameOf stateDir;
+                  WorkingDirectory = stateDir;
                   ReadWritePaths = mkIf (cfg.settings.useLocalTailscaled) [
                     "/var/run/tailscale" # needed due to `ProtectSystem = "strict";`
                     "/var/lib/tailscale"
