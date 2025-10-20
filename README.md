@@ -20,35 +20,34 @@
 
 Docker images are automatically published on when releases are tagged.
 
-```bash
-# to use the latest image
-$ docker pull ghcr.io/tailscale/tsidp:latest
-
-# to use a specific release version
-$ docker pull ghcr.io/tailscale/tsidp:v0.0.2
-```
-
-Running a tsidp container:
-
 > [!TIP]
 > Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
 >
 > Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
 
-```bash
-# Run tsidp with a persistent volume to store state
-docker run -d \
-  --name tsidp \
-  -p 443:443 \
-  -v tsidp-data:/data \
-  -e TAILSCALE_USE_WIP_CODE=1 \
-  -e TS_STATE_DIR=/data \
-  -e TS_HOSTNAME=idp \
-  -e TSIDP_ENABLE_STS=1 \
-  ghcr.io/tailscale/tsidp:latest
+Here is an example [docker compose](https://docs.docker.com/compose/) YAML file for tsidp:
+
+```yaml
+services:
+  tsidp:
+    container_name: tsidp
+    image: ghcr.io/tailscale/tsidp:latest
+    volumes:
+      - tsidp-data:/data
+    environment:
+      - TAILSCALE_USE_WIP_CODE=1 # tsidp is experimental - needed while version <1.0.0
+      - TS_STATE_DIR=/data # store persistent tsnet and tsidp state
+      - TS_HOSTNAME=idp # Hostname on tailnet (becomes idp.your-tailnet.ts.net)
+      - TSIDP_ENABLE_STS=1 # Enable OAuth token exchange
+      # Optional: Tailscale auth key for automatic node registration
+      # - TS_AUTHKEY=tskey-auth-xxxxx
+volumes:
+  tsidp-data:
 ```
 
-Visit `https://idp.yourtailnet.ts.net` to confirm the service is running.
+Paste the YAML snippet above into a file named `compose.yaml`. Once the compose file has been edited to your satisfaction, start tsidp by issuing `docker compose up -d`. Monitor the result with `docker compose logs -f`.
+
+Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to confirm the service is running.
 
 > [!NOTE]
 > If you're running tsidp for the first time it may take a few minutes for the TLS certificate to generate. You may not be able to access the service until the certificate is ready.
