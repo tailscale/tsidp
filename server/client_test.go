@@ -842,3 +842,127 @@ func TestDynamicClientRegistrationCORSHeaders(t *testing.T) {
 		t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", ah)
 	}
 }
+
+func TestClientApiCSRF(t *testing.T) {
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		secFetchSite   string
+		origin         string
+		expectedStatus int
+	}{
+		{
+			name:           "POST /clients/new - cross-site request blocked",
+			method:         "POST",
+			path:           "/clients/new",
+			secFetchSite:   "cross-site",
+			origin:         "https://evil.example.com",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "POST /clients/new - same-origin request allowed",
+			method:         "POST",
+			path:           "/clients/new",
+			secFetchSite:   "same-origin",
+			origin:         "https://idp.test.ts.net",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "POST /clients/new - same-site request allowed",
+			method:         "POST",
+			path:           "/clients/new",
+			secFetchSite:   "same-site",
+			origin:         "https://idp.test.ts.net",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "POST /clients/new - no header allowed",
+			method:         "POST",
+			path:           "/clients/new",
+			secFetchSite:   "",
+			origin:         "",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "DELETE /clients/{id} - cross-site request blocked",
+			method:         "DELETE",
+			path:           "/clients/test-client-1",
+			secFetchSite:   "cross-site",
+			origin:         "https://evil.example.com",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "DELETE /clients/{id} - same-origin request allowed",
+			method:         "DELETE",
+			path:           "/clients/test-client-1",
+			secFetchSite:   "same-origin",
+			origin:         "https://idp.test.ts.net",
+			expectedStatus: http.StatusNoContent,
+		},
+		{
+			name:           "DELETE /clients/{id} - same-site request allowed",
+			method:         "DELETE",
+			path:           "/clients/test-client-1",
+			secFetchSite:   "same-site",
+			origin:         "https://idp.test.ts.net",
+			expectedStatus: http.StatusNoContent,
+		},
+		{
+			name:           "DELETE /clients/{id} - no header allowed",
+			method:         "DELETE",
+			path:           "/clients/test-client-1",
+			secFetchSite:   "",
+			origin:         "",
+			expectedStatus: http.StatusNoContent,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			s := &IDPServer{
+				serverURL:         "https://idp.test.ts.net",
+				stateDir:          tempDir,
+				funnelClients:     make(map[string]*FunnelClient),
+				bypassAppCapCheck: true,
+			}
+
+			// For DELETE tests, add a test client
+			if tt.method == "DELETE" {
+				s.mu.Lock()
+				mak.Set(&s.funnelClients, "test-client-1", &FunnelClient{
+					ID:           "test-client-1",
+					Secret:       "test-secret",
+					Name:         "Test Client",
+					RedirectURIs: []string{"https://example.com/callback"},
+				})
+				s.mu.Unlock()
+			}
+
+			var body io.Reader
+			if tt.method == "POST" {
+				// Provide minimal form data for POST /clients/new
+				body = strings.NewReader("name=Test+Client&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback")
+			}
+
+			req := httptest.NewRequest(tt.method, tt.path, body)
+			if tt.method == "POST" {
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			}
+			if tt.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tt.secFetchSite)
+			}
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+
+			rr := httptest.NewRecorder()
+			s.ServeHTTP(rr, req)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d\nBody: %s", tt.expectedStatus, rr.Code, rr.Body.String())
+			}
+		})
+	}
+}

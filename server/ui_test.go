@@ -108,3 +108,59 @@ func TestValidateRedirectURI(t *testing.T) {
 		})
 	}
 }
+
+func TestUserInterfaceCSRF(t *testing.T) {
+	tests := []struct {
+		name           string
+		secFetchSite   string
+		origin         string
+		expectedStatus int
+	}{
+		{
+			name:           "cross-site request blocked",
+			secFetchSite:   "cross-site",
+			origin:         "https://evil.example.com",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "same-origin request allowed",
+			secFetchSite:   "same-origin",
+			origin:         "https://idp.test.ts.net",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "same-site request allowed",
+			secFetchSite:   "same-site",
+			origin:         "https://idp.test.ts.net",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "no header allowed",
+			secFetchSite:   "",
+			origin:         "",
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &IDPServer{
+				serverURL:         "https://idp.test.ts.net",
+				bypassAppCapCheck: true,
+			}
+			req := httptest.NewRequest("POST", "/new", nil)
+			if tt.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tt.secFetchSite)
+			}
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+			rr := httptest.NewRecorder()
+			s.ServeHTTP(rr, req)
+
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+		})
+	}
+}
