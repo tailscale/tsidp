@@ -364,12 +364,29 @@ func (s *IDPServer) renderFormSuccess(w http.ResponseWriter, r *http.Request, da
 	}
 }
 
+// isDangerousScheme returns true if the scheme should not be allowed
+// in OAuth redirect URIs due to security risks
+func isDangerousScheme(scheme string) bool {
+	switch scheme {
+	case "ftp", "file", "mailto", "javascript", "data",
+		"blob", "filesystem", "vbscript", "about",
+		"chrome", "chrome-extension":
+		return true
+	}
+	return false
+}
+
 // validateRedirectURI validates that a redirect URI is well-formed
 func validateRedirectURI(redirectURI string) string {
 	u, err := url.Parse(redirectURI)
 	if err != nil || u.Scheme == "" {
 		return "must be a valid URI with a scheme"
 	}
+
+	if isDangerousScheme(u.Scheme) {
+		return fmt.Sprintf("scheme %q is not allowed", u.Scheme)
+	}
+
 	if u.Scheme == "http" || u.Scheme == "https" {
 		if u.Host == "" {
 			return "HTTP and HTTPS URLs must have a host"
