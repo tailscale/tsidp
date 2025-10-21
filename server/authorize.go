@@ -27,6 +27,10 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method != "GET" && r.Method != "POST" {
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
+	}
+
 	uq := r.URL.Query()
 	state := uq.Get("state")
 
