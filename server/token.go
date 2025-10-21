@@ -249,10 +249,14 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 	s.mu.Lock()
 	ar, ok := s.refreshToken[rt]
 	if ok && ar.ValidTill.Before(time.Now()) {
-		// Token expired, remove it
-		delete(s.refreshToken, rt)
 		ok = false
 	}
+
+	// Delete the refresh token so it can not be reused. It is intentional that
+	// refresh tokens can only be used once to prevent various race conditions.
+	// If the response is an error the user will have to reauthenticate.
+	delete(s.refreshToken, rt)
+
 	s.mu.Unlock()
 
 	if !ok {
@@ -298,11 +302,6 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 		arCopy.Resources = validatedResources
 		ar = &arCopy
 	}
-
-	// Delete the old refresh token (rotation for security)
-	s.mu.Lock()
-	delete(s.refreshToken, rt)
-	s.mu.Unlock()
 
 	s.issueTokens(w, r, ar)
 }
