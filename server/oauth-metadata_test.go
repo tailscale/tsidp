@@ -375,3 +375,40 @@ func TestJWKSEndpoint(t *testing.T) {
 		}
 	}
 }
+func TestMetadataCORSHeaders(t *testing.T) {
+	s := &IDPServer{
+		serverURL:   "https://idp.test.ts.net",
+		loopbackURL: "http://localhost:8080",
+	}
+
+	for _, endpoint := range []string{"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration", "/.well-known/jwks.json"} {
+		t.Run(endpoint, func(t *testing.T) {
+			req := httptest.NewRequest("OPTIONS", endpoint, nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+
+			rr := httptest.NewRecorder()
+			s.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusNoContent {
+				t.Errorf("expected status 204, got %d", rr.Code)
+			}
+
+			// extract the CORS headers
+			accessControlAllowOrigin := rr.Header().Get("Access-Control-Allow-Origin")
+			accessControlAllowMethods := rr.Header().Get("Access-Control-Allow-Method")
+			accessControlAllowHeaders := rr.Header().Get("Access-Control-Allow-Headers")
+
+			if accessControlAllowOrigin != "*" {
+				t.Errorf("expected Access-Control-Allow-Origin to be '*', got %s", accessControlAllowOrigin)
+			}
+
+			if accessControlAllowMethods != "GET, OPTIONS" {
+				t.Errorf("expected Access-Control-Allow-Methods to be 'GET, OPTIONS', got %s", accessControlAllowMethods)
+			}
+
+			if accessControlAllowHeaders != "*" {
+				t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", accessControlAllowHeaders)
+			}
+		})
+	}
+}

@@ -1585,3 +1585,28 @@ func TestServeTokenWithClientValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestTokenCORSHeaders(t *testing.T) {
+	s := &IDPServer{
+		serverURL: "https://idp.test.ts.net",
+	}
+	req := httptest.NewRequest("OPTIONS", "/token", nil)
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, req)
+
+	ao := rr.Header().Get("Access-Control-Allow-Origin")
+	am := rr.Header().Get("Access-Control-Allow-Method")
+	ah := rr.Header().Get("Access-Control-Allow-Headers")
+
+	if ao != "*" {
+		t.Errorf("expected Access-Control-Allow-Origin to be '*', got %s", ao)
+	}
+
+	if am != "POST, OPTIONS" {
+		t.Errorf("expected Access-Control-Allow-Methods to be 'POST, OPTIONS, got %s", am)
+	}
+
+	if ah != "*" {
+		t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", ah)
+	}
+}

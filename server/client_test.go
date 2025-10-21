@@ -816,3 +816,29 @@ func TestServeNewClient(t *testing.T) {
 		t.Error("new client was not added to server's client list")
 	}
 }
+
+func TestDynamicClientRegistrationCORSHeaders(t *testing.T) {
+	s := &IDPServer{
+		serverURL:   "https://idp.test.ts.net",
+		loopbackURL: "http://localhost:8080",
+	}
+	req := httptest.NewRequest("OPTIONS", "/register", nil)
+	rr := httptest.NewRecorder()
+	s.ServeHTTP(rr, req)
+
+	ao := rr.Header().Get("Access-Control-Allow-Origin")
+	am := rr.Header().Get("Access-Control-Allow-Method")
+	ah := rr.Header().Get("Access-Control-Allow-Headers")
+
+	if ao != "*" {
+		t.Errorf("expected Access-Control-Allow-Origin to be '*', got %s", ao)
+	}
+
+	if am != "POST, OPTIONS" {
+		t.Errorf("expected Access-Control-Allow-Methods to be 'POST, OPTIONS, got %s", am)
+	}
+
+	if ah != "*" {
+		t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", ah)
+	}
+}
