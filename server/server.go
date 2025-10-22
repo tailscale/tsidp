@@ -239,18 +239,6 @@ func (s *IDPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Migrated from legacy/tsidp.go:674-687
 func (s *IDPServer) newMux() *http.ServeMux {
 
-	// CSRF protection
-	cop := http.NewCrossOriginProtection()
-	cop.AddTrustedOrigin(s.serverURL)
-	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintln(w, "Forbidden: cross-origin check failed")
-		slog.Warn("Cross origin request blocked",
-			slog.String("path", r.URL.Path),
-			slog.String("remoteAddr", r.RemoteAddr),
-		)
-	}))
-
 	mux := http.NewServeMux()
 	// Register .well-known handlers
 	mux.HandleFunc("/.well-known/jwks.json", s.serveJWKS)
@@ -278,10 +266,10 @@ func (s *IDPServer) newMux() *http.ServeMux {
 
 	// Register /clients/ - API access to manage clients DB
 	// wrap it in a cross origin protection handler to prevent CSRF
-	mux.Handle("/clients/", cop.Handler(s.addGrantAccessContext(s.serveClients)))
+	mux.Handle("/clients/", s.csrfCheck(s.addGrantAccessContext(s.serveClients)))
 
 	// Register UI handler - must be last as it handles "/"
-	mux.Handle("/", cop.Handler(s.addGrantAccessContext(s.handleUI)))
+	mux.Handle("/", s.csrfCheck(s.addGrantAccessContext(s.handleUI)))
 
 	return mux
 }
@@ -556,4 +544,42 @@ func isFunnelRequest(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// csrfCheck wraps the next handler in a CSRF check
+func (s *IDPServer) csrfCheck(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Skip CSRF check for safe methods
+		if r.Method != http.MethodPost && r.Method != http.MethodDelete && r.Method != http.MethodPatch {
+			next(w, r)
+			return
+		}
+
+		ok := true
+
+		// Check Sec-Fetch-Site header if present
+		if secFetchSite := r.Header.Get("Sec-Fetch-Site"); secFetchSite != "" {
+			ok = secFetchSite == "same-origin" || secFetchSite == "same-site"
+		}
+
+		// Check Origin header if present
+		if ok {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				ok = origin == s.serverURL
+			}
+		}
+
+		if !ok {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintln(w, "Forbidden: cross-origin check failed")
+			slog.Warn("Cross origin request blocked",
+				slog.String("path", r.URL.Path),
+				slog.String("remoteAddr", r.RemoteAddr),
+			)
+			return
+		}
+
+		// Proceed to next handler
+		next(w, r)
+	}
 }
