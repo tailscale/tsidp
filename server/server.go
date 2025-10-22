@@ -266,10 +266,10 @@ func (s *IDPServer) newMux() *http.ServeMux {
 
 	// Register /clients/ - API access to manage clients DB
 	// wrap it in a cross origin protection handler to prevent CSRF
-	mux.Handle("/clients/", s.csrfCheck(s.addGrantAccessContext(s.serveClients)))
+	mux.HandleFunc("/clients/", s.csrfCheck(s.addGrantAccessContext(s.serveClients)))
 
 	// Register UI handler - must be last as it handles "/"
-	mux.Handle("/", s.csrfCheck(s.addGrantAccessContext(s.handleUI)))
+	mux.HandleFunc("/", s.csrfCheck(s.addGrantAccessContext(s.handleUI)))
 
 	return mux
 }
