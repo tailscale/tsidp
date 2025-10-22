@@ -550,7 +550,7 @@ func isFunnelRequest(r *http.Request) bool {
 func (s *IDPServer) csrfCheck(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Skip CSRF check for safe methods
-		if r.Method != http.MethodPost && r.Method != http.MethodDelete && r.Method != http.MethodPatch {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
 			next(w, r)
 			return
 		}
@@ -559,14 +559,12 @@ func (s *IDPServer) csrfCheck(next http.HandlerFunc) http.HandlerFunc {
 
 		// Check Sec-Fetch-Site header if present
 		if secFetchSite := r.Header.Get("Sec-Fetch-Site"); secFetchSite != "" {
-			ok = secFetchSite == "same-origin" || secFetchSite == "same-site"
+			ok = secFetchSite == "same-origin" || secFetchSite == "same-site" || secFetchSite == "none"
 		}
 
 		// Check Origin header if present
-		if ok {
-			if origin := r.Header.Get("Origin"); origin != "" {
-				ok = origin == s.serverURL
-			}
+		if origin := r.Header.Get("Origin"); ok && origin != "" {
+			ok = origin == s.serverURL
 		}
 
 		if !ok {
