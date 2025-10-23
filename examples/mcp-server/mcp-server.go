@@ -183,7 +183,7 @@ func oauthProtectedResourceHandler(authServerUrl string, resourceURL string) htt
 			"resource":                              resourceURL,
 			"authorization_servers":                 []string{authServerUrl},
 			"bearer_methods_supported":              []string{"header"},
-			"resource_documentation":                "https://github.com/mostlygeek/mcp-demo",
+			"resource_documentation":                "https://github.com/tailscale/tsidp/examples/mcp-server",
 			"resource_signing_alg_values_supported": []string{"RS256"},
 			"scopes_supported":                      []string{"email", "profile"}, // match tsidp/.well-known/openid-configuration
 		}
