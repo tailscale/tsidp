@@ -816,3 +816,398 @@ func TestServeNewClient(t *testing.T) {
 		t.Error("new client was not added to server's client list")
 	}
 }
+
+// TestServeUpdateClient tests the update client endpoint
+func TestServeUpdateClient(t *testing.T) {
+	tests := []struct {
+		name            string
+		clientID        string
+		formData        string
+		expectStatus    int
+		checkResponse   func(t *testing.T, body []byte)
+		setupClient     bool
+		initialName     string
+		initialRedirect []string
+	}{
+		{
+			name:            "successful update - name and redirect URIs",
+			clientID:        "test-client-1",
+			formData:        "name=Updated+Name&redirect_uri=https%3A%2F%2Fupdated.example.com%2Fcallback",
+			expectStatus:    http.StatusOK,
+			setupClient:     true,
+			initialName:     "Original Name",
+			initialRedirect: []string{"https://original.example.com/callback"},
+			checkResponse: func(t *testing.T, body []byte) {
+				var resp FunnelClient
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+				if resp.Name != "Updated Name" {
+					t.Errorf("expected name 'Updated Name', got %s", resp.Name)
+				}
+				if len(resp.RedirectURIs) != 1 || resp.RedirectURIs[0] != "https://updated.example.com/callback" {
+					t.Errorf("expected redirect URIs ['https://updated.example.com/callback'], got %v", resp.RedirectURIs)
+				}
+				if resp.Secret != "" {
+					t.Error("secret should not be included in response")
+				}
+			},
+		},
+		{
+			name:            "successful update - multiple redirect URIs",
+			clientID:        "test-client-2",
+			formData:        "name=Multi+URI&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback1%0Ahttps%3A%2F%2Fexample.com%2Fcallback2",
+			expectStatus:    http.StatusOK,
+			setupClient:     true,
+			initialName:     "Original Name",
+			initialRedirect: []string{"https://original.example.com/callback"},
+			checkResponse: func(t *testing.T, body []byte) {
+				var resp FunnelClient
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+				if len(resp.RedirectURIs) != 2 {
+					t.Errorf("expected 2 redirect URIs, got %d", len(resp.RedirectURIs))
+				}
+			},
+		},
+		{
+			name:         "missing redirect_uri",
+			clientID:     "test-client-3",
+			formData:     "name=Test",
+			expectStatus: http.StatusBadRequest,
+			setupClient:  true,
+			checkResponse: func(t *testing.T, body []byte) {
+				var errResp map[string]interface{}
+				if err := json.Unmarshal(body, &errResp); err != nil {
+					t.Fatalf("expected JSON error response, got: %s", body)
+				}
+				if errResp["error"] != "invalid_request" {
+					t.Errorf("expected error code 'invalid_request', got: %v", errResp["error"])
+				}
+			},
+		},
+		{
+			name:         "empty redirect_uri",
+			clientID:     "test-client-4",
+			formData:     "name=Test&redirect_uri=",
+			expectStatus: http.StatusBadRequest,
+			setupClient:  true,
+			checkResponse: func(t *testing.T, body []byte) {
+				var errResp map[string]interface{}
+				if err := json.Unmarshal(body, &errResp); err != nil {
+					t.Fatalf("expected JSON error response, got: %s", body)
+				}
+				if errResp["error"] != "invalid_request" {
+					t.Errorf("expected error code 'invalid_request', got: %v", errResp["error"])
+				}
+			},
+		},
+		{
+			name:         "client not found",
+			clientID:     "nonexistent-client",
+			formData:     "name=Test&redirect_uri=https%3A%2F%2Fexample.com%2Fcallback",
+			expectStatus: http.StatusNotFound,
+			setupClient:  false,
+			checkResponse: func(t *testing.T, body []byte) {
+				var errResp map[string]interface{}
+				if err := json.Unmarshal(body, &errResp); err != nil {
+					t.Fatalf("expected JSON error response, got: %s", body)
+				}
+				if errResp["error"] != "not_found" {
+					t.Errorf("expected error code 'not_found', got: %v", errResp["error"])
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			s := &IDPServer{
+				serverURL:     "https://idp.test.ts.net",
+				stateDir:      tempDir,
+				funnelClients: make(map[string]*FunnelClient),
+			}
+
+			// Setup client if needed
+			if tt.setupClient {
+				client := &FunnelClient{
+					ID:           tt.clientID,
+					Secret:       "test-secret",
+					Name:         tt.initialName,
+					RedirectURIs: tt.initialRedirect,
+				}
+				s.mu.Lock()
+				mak.Set(&s.funnelClients, tt.clientID, client)
+				s.mu.Unlock()
+			}
+
+			body := strings.NewReader(tt.formData)
+			req := httptest.NewRequest("PUT", "/clients/"+tt.clientID, body)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Accept", "application/json")
+			rr := httptest.NewRecorder()
+
+			s.serveUpdateClient(rr, req, tt.clientID)
+
+			if rr.Code != tt.expectStatus {
+				t.Errorf("expected status %d, got %d\nBody: %s", tt.expectStatus, rr.Code, rr.Body.String())
+			}
+
+			if tt.checkResponse != nil {
+				tt.checkResponse(t, rr.Body.Bytes())
+			}
+		})
+	}
+}
+
+// TestServeRegenerateSecret tests the regenerate secret endpoint
+func TestServeRegenerateSecret(t *testing.T) {
+	tests := []struct {
+		name          string
+		clientID      string
+		expectStatus  int
+		checkResponse func(t *testing.T, s *IDPServer, oldSecret string, body []byte)
+		setupClient   bool
+	}{
+		{
+			name:         "successful secret regeneration",
+			clientID:     "test-client-1",
+			expectStatus: http.StatusOK,
+			setupClient:  true,
+			checkResponse: func(t *testing.T, s *IDPServer, oldSecret string, body []byte) {
+				var resp FunnelClient
+				if err := json.Unmarshal(body, &resp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+				if resp.Secret == "" {
+					t.Error("secret should be included in response")
+				}
+				if resp.Secret == oldSecret {
+					t.Error("new secret should be different from old secret")
+				}
+				if len(resp.Secret) == 0 {
+					t.Error("secret should not be empty")
+				}
+
+				// Verify the secret was updated in the server's client list
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				client, exists := s.funnelClients[resp.ID]
+				if !exists {
+					t.Fatal("client should still exist after secret regeneration")
+				}
+				if client.Secret != resp.Secret {
+					t.Error("server's stored secret should match response secret")
+				}
+			},
+		},
+		{
+			name:         "client not found",
+			clientID:     "nonexistent-client",
+			expectStatus: http.StatusNotFound,
+			setupClient:  false,
+			checkResponse: func(t *testing.T, s *IDPServer, oldSecret string, body []byte) {
+				var errResp map[string]interface{}
+				if err := json.Unmarshal(body, &errResp); err != nil {
+					t.Fatalf("expected JSON error response, got: %s", body)
+				}
+				if errResp["error"] != "not_found" {
+					t.Errorf("expected error code 'not_found', got: %v", errResp["error"])
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			s := &IDPServer{
+				serverURL:     "https://idp.test.ts.net",
+				stateDir:      tempDir,
+				funnelClients: make(map[string]*FunnelClient),
+			}
+
+			var oldSecret string
+			// Setup client if needed
+			if tt.setupClient {
+				oldSecret = "old-secret-12345"
+				client := &FunnelClient{
+					ID:           tt.clientID,
+					Secret:       oldSecret,
+					Name:         "Test Client",
+					RedirectURIs: []string{"https://example.com/callback"},
+				}
+				s.mu.Lock()
+				mak.Set(&s.funnelClients, tt.clientID, client)
+				s.mu.Unlock()
+			}
+
+			req := httptest.NewRequest("POST", "/clients/"+tt.clientID+"/regenerate-secret", nil)
+			req.Header.Set("Accept", "application/json")
+			rr := httptest.NewRecorder()
+
+			s.serveRegenerateSecret(rr, req, tt.clientID)
+
+			if rr.Code != tt.expectStatus {
+				t.Errorf("expected status %d, got %d\nBody: %s", tt.expectStatus, rr.Code, rr.Body.String())
+			}
+
+			if tt.checkResponse != nil {
+				tt.checkResponse(t, s, oldSecret, rr.Body.Bytes())
+			}
+		})
+	}
+}
+
+// TestUpdateClientPersistence tests that client updates are persisted to disk
+func TestUpdateClientPersistence(t *testing.T) {
+	tempDir := t.TempDir()
+
+	s := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		stateDir:      tempDir,
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	// Create initial client
+	client := &FunnelClient{
+		ID:           "test-client-1",
+		Secret:       "test-secret",
+		Name:         "Original Name",
+		RedirectURIs: []string{"https://original.example.com/callback"},
+	}
+
+	s.mu.Lock()
+	mak.Set(&s.funnelClients, client.ID, client)
+	err := s.storeFunnelClientsLocked()
+	s.mu.Unlock()
+
+	if err != nil {
+		t.Fatalf("failed to store initial client: %v", err)
+	}
+
+	// Update client via API
+	formData := "name=Updated+Name&redirect_uri=https%3A%2F%2Fupdated.example.com%2Fcallback"
+	body := strings.NewReader(formData)
+	req := httptest.NewRequest("PUT", "/clients/test-client-1", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	s.serveUpdateClient(rr, req, "test-client-1")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update request failed with status %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Create new server instance and load clients
+	s2 := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		stateDir:      tempDir,
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	err = s2.LoadFunnelClients()
+	if err != nil {
+		t.Fatalf("failed to load clients: %v", err)
+	}
+
+	// Verify the updated client was persisted
+	s2.mu.Lock()
+	loadedClient, ok := s2.funnelClients[client.ID]
+	s2.mu.Unlock()
+
+	if !ok {
+		t.Fatal("client not found after loading")
+	}
+
+	if loadedClient.Name != "Updated Name" {
+		t.Errorf("expected name 'Updated Name', got %s", loadedClient.Name)
+	}
+
+	if len(loadedClient.RedirectURIs) != 1 || loadedClient.RedirectURIs[0] != "https://updated.example.com/callback" {
+		t.Errorf("expected redirect URIs ['https://updated.example.com/callback'], got %v", loadedClient.RedirectURIs)
+	}
+}
+
+// TestRegenerateSecretPersistence tests that regenerated secrets are persisted to disk
+func TestRegenerateSecretPersistence(t *testing.T) {
+	tempDir := t.TempDir()
+
+	s := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		stateDir:      tempDir,
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	// Create initial client
+	oldSecret := "old-secret-12345"
+	client := &FunnelClient{
+		ID:           "test-client-1",
+		Secret:       oldSecret,
+		Name:         "Test Client",
+		RedirectURIs: []string{"https://example.com/callback"},
+	}
+
+	s.mu.Lock()
+	mak.Set(&s.funnelClients, client.ID, client)
+	err := s.storeFunnelClientsLocked()
+	s.mu.Unlock()
+
+	if err != nil {
+		t.Fatalf("failed to store initial client: %v", err)
+	}
+
+	// Regenerate secret via API
+	req := httptest.NewRequest("POST", "/clients/test-client-1/regenerate-secret", nil)
+	rr := httptest.NewRecorder()
+
+	s.serveRegenerateSecret(rr, req, "test-client-1")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("regenerate request failed with status %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Parse the response to get the new secret
+	var resp FunnelClient
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	newSecret := resp.Secret
+	if newSecret == oldSecret {
+		t.Fatal("new secret should be different from old secret")
+	}
+
+	// Create new server instance and load clients
+	s2 := &IDPServer{
+		serverURL:     "https://idp.test.ts.net",
+		stateDir:      tempDir,
+		funnelClients: make(map[string]*FunnelClient),
+	}
+
+	err = s2.LoadFunnelClients()
+	if err != nil {
+		t.Fatalf("failed to load clients: %v", err)
+	}
+
+	// Verify the new secret was persisted
+	s2.mu.Lock()
+	loadedClient, ok := s2.funnelClients[client.ID]
+	s2.mu.Unlock()
+
+	if !ok {
+		t.Fatal("client not found after loading")
+	}
+
+	if loadedClient.Secret != newSecret {
+		t.Errorf("expected secret %s, got %s", newSecret, loadedClient.Secret)
+	}
+
+	if loadedClient.Secret == oldSecret {
+		t.Error("loaded client should have new secret, not old secret")
+	}
+}

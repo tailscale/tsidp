@@ -20,18 +20,6 @@
           <a href="/" class="btn btn-secondary">← Back to Clients</a>
         </div>
 
-        {{if .Success}}
-        <div class="alert alert-success">
-          {{.Success}}
-        </div>
-        {{end}}
-
-        {{if .Error}}
-        <div class="alert alert-error">
-          {{.Error}}
-        </div>
-        {{end}}
-
         {{if and .Secret .IsNew}}
         <div class="client-info">
           <h3>Client Created Successfully!</h3>
@@ -152,17 +140,20 @@
     </main>
 
     <script>
+      /**
+       * Copy client secret to clipboard
+       */
       function copySecret(event) {
         const secretInput = document.getElementById('client-secret');
         secretInput.select();
         secretInput.setSelectionRange(0, 99999); // For mobile devices
-        
+
         navigator.clipboard.writeText(secretInput.value).then(function() {
           const button = event.target;
           const originalText = button.textContent;
           button.textContent = 'Copied!';
           button.classList.add('btn-success');
-          
+
           setTimeout(function() {
             button.textContent = originalText;
             button.classList.remove('btn-success');
@@ -172,18 +163,21 @@
           alert('Failed to copy to clipboard. Please copy manually.');
         });
       }
-      
+
+      /**
+       * Copy client ID to clipboard
+       */
       function copyClientId(event) {
         const clientIdInput = document.getElementById('client-id');
         clientIdInput.select();
         clientIdInput.setSelectionRange(0, 99999); // For mobile devices
-        
+
         navigator.clipboard.writeText(clientIdInput.value).then(function() {
           const button = event.target;
           const originalText = button.textContent;
           button.textContent = 'Copied!';
           button.classList.add('btn-success');
-          
+
           setTimeout(function() {
             button.textContent = originalText;
             button.classList.remove('btn-success');
@@ -193,6 +187,256 @@
           alert('Failed to copy to clipboard. Please copy manually.');
         });
       }
+
+      /**
+       * Show error message in the UI
+       */
+      function showError(message) {
+        // Remove any existing success messages
+        const successAlerts = document.querySelectorAll('.alert-success');
+        successAlerts.forEach(function(alert) {
+          alert.remove();
+        });
+
+        // Find or create error alert
+        let errorAlert = document.querySelector('.alert-error');
+        if (!errorAlert) {
+          errorAlert = document.createElement('div');
+          errorAlert.className = 'alert alert-error';
+          const formContainer = document.querySelector('.form-container');
+          const formHeader = document.querySelector('.form-header');
+          formContainer.insertBefore(errorAlert, formHeader.nextSibling);
+        }
+        errorAlert.textContent = message;
+        errorAlert.style.display = 'block';
+      }
+
+      /**
+       * Show success message in the UI
+       */
+      function showSuccess(message) {
+        // Remove any existing error messages
+        const errorAlerts = document.querySelectorAll('.alert-error');
+        errorAlerts.forEach(function(alert) {
+          alert.remove();
+        });
+
+        // Find or create success alert
+        let successAlert = document.querySelector('.alert-success');
+        if (!successAlert) {
+          successAlert = document.createElement('div');
+          successAlert.className = 'alert alert-success';
+          const formContainer = document.querySelector('.form-container');
+          const formHeader = document.querySelector('.form-header');
+          formContainer.insertBefore(successAlert, formHeader.nextSibling);
+        }
+        successAlert.textContent = message;
+        successAlert.style.display = 'block';
+      }
+
+      /**
+       * Handle create client (POST to /clients/new)
+       */
+      function handleCreate(formData, submitButton) {
+        return fetch('/clients/new', {
+          method: 'POST',
+          body: formData
+        })
+        .then(function(response) {
+          if (!response.ok) {
+            return response.json().then(function(err) {
+              throw new Error(err.error_description || 'Failed to create client');
+            });
+          }
+          return response.json();
+        })
+        .then(function(client) {
+          // Show success message
+          showSuccess('Client created successfully!');
+
+          // Update the page to show the created client
+          // Show client info section
+          let clientInfo = document.querySelector('.client-info');
+          if (!clientInfo) {
+            clientInfo = document.createElement('div');
+            clientInfo.className = 'client-info';
+            const form = document.querySelector('.client-form');
+            form.parentNode.insertBefore(clientInfo, form);
+          }
+
+          clientInfo.innerHTML =
+            '<h3>Client Created Successfully!</h3>' +
+            '<p class="warning">⚠️ Save both the Client ID and Secret now! The secret will not be shown again.</p>' +
+            '<div class="form-group">' +
+              '<label>Client ID</label>' +
+              '<div class="secret-field">' +
+                '<input type="text" value="' + client.client_id + '" readonly class="secret-input" id="client-id">' +
+                '<button type="button" onclick="copyClientId(event)" class="btn btn-secondary btn-small">Copy</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+              '<label>Client Secret</label>' +
+              '<div class="secret-field">' +
+                '<input type="text" value="' + client.client_secret + '" readonly class="secret-input" id="client-secret">' +
+                '<button type="button" onclick="copySecret(event)" class="btn btn-secondary btn-small">Copy</button>' +
+              '</div>' +
+            '</div>';
+
+          // Change submit button text and make it go back to list
+          submitButton.textContent = '← Back to Clients';
+          submitButton.onclick = function() {
+            window.location.href = '/';
+          };
+          submitButton.type = 'button';
+        })
+        .catch(function(error) {
+          showError(error.message);
+          throw error;
+        });
+      }
+
+      /**
+       * Handle update client (PUT to /clients/{id})
+       */
+      function handleUpdate(clientId, formData, submitButton) {
+        return fetch('/clients/' + clientId, {
+          method: 'PUT',
+          body: formData
+        })
+        .then(function(response) {
+          if (!response.ok) {
+            return response.json().then(function(err) {
+              throw new Error(err.error_description || 'Failed to update client');
+            });
+          }
+          return response.json();
+        })
+        .then(function(client) {
+          showSuccess('Client updated successfully!');
+        })
+        .catch(function(error) {
+          showError(error.message);
+          throw error;
+        });
+      }
+
+      /**
+       * Handle regenerate secret (POST to /clients/{id}/regenerate-secret)
+       */
+      function handleRegenerateSecret(clientId, submitButton) {
+        return fetch('/clients/' + clientId + '/regenerate-secret', {
+          method: 'POST'
+        })
+        .then(function(response) {
+          if (!response.ok) {
+            return response.json().then(function(err) {
+              throw new Error(err.error_description || 'Failed to regenerate secret');
+            });
+          }
+          return response.json();
+        })
+        .then(function(client) {
+          showSuccess('Client secret regenerated successfully!');
+
+          // Show the new secret
+          let secretDisplay = document.querySelector('.secret-display');
+          if (!secretDisplay) {
+            secretDisplay = document.createElement('div');
+            secretDisplay.className = 'secret-display';
+            const form = document.querySelector('.client-form');
+            form.parentNode.insertBefore(secretDisplay, form);
+          }
+
+          secretDisplay.innerHTML =
+            '<h3>New Client Secret</h3>' +
+            '<p class="warning">⚠️ Save this secret now! It will not be shown again.</p>' +
+            '<div class="secret-field">' +
+              '<input type="text" value="' + client.client_secret + '" readonly class="secret-input" id="client-secret">' +
+              '<button type="button" onclick="copySecret(event)" class="btn btn-secondary btn-small">Copy</button>' +
+            '</div>';
+        })
+        .catch(function(error) {
+          showError(error.message);
+          throw error;
+        });
+      }
+
+      /**
+       * Handle delete client (DELETE to /clients/{id})
+       */
+      function handleDelete(clientId, submitButton) {
+        return fetch('/clients/' + clientId, {
+          method: 'DELETE'
+        })
+        .then(function(response) {
+          if (!response.ok) {
+            return response.json().then(function(err) {
+              throw new Error(err.error_description || 'Failed to delete client');
+            });
+          }
+          // Redirect to client list on success
+          window.location.href = '/';
+        })
+        .catch(function(error) {
+          showError(error.message);
+          throw error;
+        });
+      }
+
+      /**
+       * Main form submission handler
+       */
+      document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('.client-form');
+
+        form.addEventListener('submit', function(event) {
+          event.preventDefault();
+
+          const submitButton = event.submitter || document.activeElement;
+          const action = submitButton.value;
+          const originalText = submitButton.textContent;
+
+          // Get form data
+          const formData = new FormData(form);
+
+          // Convert redirect_uris textarea to redirect_uri form field
+          const redirectUris = formData.get('redirect_uris');
+          formData.delete('redirect_uris');
+          formData.set('redirect_uri', redirectUris);
+
+          // Disable submit button during request
+          submitButton.disabled = true;
+          submitButton.textContent = 'Processing...';
+
+          // Determine if this is create or edit
+          const isNew = window.location.pathname === '/new';
+          const clientId = isNew ? null : window.location.pathname.split('/')[2];
+
+          let promise;
+
+          if (action === 'regenerate_secret') {
+            // Handle regenerate secret
+            promise = handleRegenerateSecret(clientId, submitButton);
+          } else if (action === 'delete') {
+            // Handle delete
+            promise = handleDelete(clientId, submitButton);
+          } else if (isNew) {
+            // Handle create
+            promise = handleCreate(formData, submitButton);
+          } else {
+            // Handle update
+            promise = handleUpdate(clientId, formData, submitButton);
+          }
+
+          promise.finally(function() {
+            // Re-enable submit button
+            submitButton.disabled = false;
+            if (submitButton.textContent === 'Processing...') {
+              submitButton.textContent = originalText;
+            }
+          });
+        });
+      });
     </script>
   </body>
 </html> 

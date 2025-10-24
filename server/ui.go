@@ -6,16 +6,12 @@ package server
 import (
 	"bytes"
 	_ "embed"
-	"fmt"
 	"html/template"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
-
-	"tailscale.com/util/rands"
 )
 
 //go:embed ui-header.html
@@ -112,81 +108,21 @@ func (s *IDPServer) handleClientsList(w http.ResponseWriter, r *http.Request) {
 // handleNewClient handles creating a new OAuth/OIDC client
 // Migrated from legacy/ui.go:115-186
 func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		if err := s.renderClientForm(w, clientDisplayData{IsNew: true}); err != nil {
-			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
-		}
-		return
+	if r.Method != "GET" {
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
 	}
 
-	if r.Method == "POST" {
-		if err := r.ParseForm(); err != nil {
-			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "Failed to parse form", err)
-			return
-		}
-
-		name := strings.TrimSpace(r.FormValue("name"))
-		redirectURIsText := strings.TrimSpace(r.FormValue("redirect_uris"))
-		redirectURIs := splitRedirectURIs(redirectURIsText)
-
-		baseData := clientDisplayData{
-			IsNew:        true,
-			Name:         name,
-			RedirectURIs: redirectURIs,
-		}
-
-		if len(redirectURIs) == 0 {
-			s.renderFormError(w, r, baseData, "At least one redirect URI is required")
-			return
-		}
-
-		for _, uri := range redirectURIs {
-			if errMsg := validateRedirectURI(uri); errMsg != "" {
-				s.renderFormError(w, r, baseData, fmt.Sprintf("Invalid redirect URI '%s': %s", uri, errMsg))
-				return
-			}
-		}
-
-		clientID := rands.HexString(32)
-		clientSecret := rands.HexString(64)
-		newClient := FunnelClient{
-			ID:           clientID,
-			Secret:       clientSecret,
-			Name:         name,
-			RedirectURIs: redirectURIs,
-		}
-
-		s.mu.Lock()
-		if s.funnelClients == nil {
-			s.funnelClients = make(map[string]*FunnelClient)
-		}
-		s.funnelClients[clientID] = &newClient
-		err := s.storeFunnelClientsLocked()
-		s.mu.Unlock()
-
-		if err != nil {
-			slog.Error("client create: could not write funnel clients db", slog.Any("error", err))
-			s.renderFormError(w, r, baseData, "Failed to save client")
-			return
-		}
-
-		successData := clientDisplayData{
-			ID:           clientID,
-			Name:         name,
-			RedirectURIs: redirectURIs,
-			Secret:       clientSecret,
-			IsNew:        true,
-		}
-		s.renderFormSuccess(w, r, successData, "Client created successfully! Save the client secret - it won't be shown again.")
-		return
+	if err := s.renderClientForm(w, clientDisplayData{IsNew: true}); err != nil {
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
 	}
-
-	writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
 }
 
 // handleEditClient handles editing an existing OAuth/OIDC client
-// Migrated from legacy/ui.go:188-319
 func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
+	}
+
 	clientID := strings.TrimPrefix(r.URL.Path, "/edit/")
 	if clientID == "" {
 		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "Client ID required", nil)
@@ -202,121 +138,16 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method == "GET" {
-		data := clientDisplayData{
-			ID:           client.ID,
-			Name:         client.Name,
-			RedirectURIs: client.RedirectURIs,
-			HasSecret:    client.Secret != "",
-			IsEdit:       true,
-		}
-		if err := s.renderClientForm(w, data); err != nil {
-			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
-		}
-		return
+	data := clientDisplayData{
+		ID:           client.ID,
+		Name:         client.Name,
+		RedirectURIs: client.RedirectURIs,
+		HasSecret:    client.Secret != "",
+		IsEdit:       true,
 	}
-
-	if r.Method == "POST" {
-		action := r.FormValue("action")
-
-		if action == "delete" {
-			s.mu.Lock()
-			delete(s.funnelClients, clientID)
-			err := s.storeFunnelClientsLocked()
-			s.mu.Unlock()
-
-			if err != nil {
-				slog.Error("client delete: could not write funnel clients db", slog.Any("error", err))
-				s.mu.Lock()
-				s.funnelClients[clientID] = client
-				s.mu.Unlock()
-
-				baseData := clientDisplayData{
-					ID:           client.ID,
-					Name:         client.Name,
-					RedirectURIs: client.RedirectURIs,
-					HasSecret:    client.Secret != "",
-					IsEdit:       true,
-				}
-				s.renderFormError(w, r, baseData, "Failed to delete client. Please try again.")
-				return
-			}
-
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-
-		if action == "regenerate_secret" {
-			newSecret := rands.HexString(64)
-			s.mu.Lock()
-			s.funnelClients[clientID].Secret = newSecret
-			err := s.storeFunnelClientsLocked()
-			s.mu.Unlock()
-
-			baseData := clientDisplayData{
-				ID:           client.ID,
-				Name:         client.Name,
-				RedirectURIs: client.RedirectURIs,
-				HasSecret:    true,
-				IsEdit:       true,
-			}
-
-			if err != nil {
-				slog.Error("client regen secret: could not write funnel clients db", slog.Any("error", err))
-				s.renderFormError(w, r, baseData, "Failed to regenerate secret")
-				return
-			}
-
-			baseData.Secret = newSecret
-			s.renderFormSuccess(w, r, baseData, "New client secret generated! Save it - it won't be shown again.")
-			return
-		}
-
-		if err := r.ParseForm(); err != nil {
-			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "Failed to parse form", err)
-			return
-		}
-
-		name := strings.TrimSpace(r.FormValue("name"))
-		redirectURIsText := strings.TrimSpace(r.FormValue("redirect_uris"))
-		redirectURIs := splitRedirectURIs(redirectURIsText)
-		baseData := clientDisplayData{
-			ID:           client.ID,
-			Name:         name,
-			RedirectURIs: redirectURIs,
-			HasSecret:    client.Secret != "",
-			IsEdit:       true,
-		}
-
-		if len(redirectURIs) == 0 {
-			s.renderFormError(w, r, baseData, "At least one redirect URI is required")
-			return
-		}
-
-		for _, uri := range redirectURIs {
-			if errMsg := validateRedirectURI(uri); errMsg != "" {
-				s.renderFormError(w, r, baseData, fmt.Sprintf("Invalid redirect URI '%s': %s", uri, errMsg))
-				return
-			}
-		}
-
-		s.mu.Lock()
-		s.funnelClients[clientID].Name = name
-		s.funnelClients[clientID].RedirectURIs = redirectURIs
-		err := s.storeFunnelClientsLocked()
-		s.mu.Unlock()
-
-		if err != nil {
-			slog.Error("client update: could not write funnel clients db", slog.Any("error", err))
-			s.renderFormError(w, r, baseData, "Failed to update client")
-			return
-		}
-
-		s.renderFormSuccess(w, r, baseData, "Client updated successfully!")
-		return
+	if err := s.renderClientForm(w, data); err != nil {
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
 	}
-
-	writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
 }
 
 // clientDisplayData holds data for rendering client forms and lists
@@ -329,8 +160,6 @@ type clientDisplayData struct {
 	HasSecret    bool
 	IsNew        bool
 	IsEdit       bool
-	Success      string
-	Error        string
 }
 
 // renderClientForm renders the client edit/create form
@@ -344,24 +173,6 @@ func (s *IDPServer) renderClientForm(w http.ResponseWriter, data clientDisplayDa
 		return err
 	}
 	return nil
-}
-
-// renderFormError renders the form with an error message
-// Migrated from legacy/ui.go:344-349
-func (s *IDPServer) renderFormError(w http.ResponseWriter, r *http.Request, data clientDisplayData, errorMsg string) {
-	data.Error = errorMsg
-	if err := s.renderClientForm(w, data); err != nil {
-		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
-	}
-}
-
-// renderFormSuccess renders the form with a success message
-// Migrated from legacy/ui.go:351-356
-func (s *IDPServer) renderFormSuccess(w http.ResponseWriter, r *http.Request, data clientDisplayData, successMsg string) {
-	data.Success = successMsg
-	if err := s.renderClientForm(w, data); err != nil {
-		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
-	}
 }
 
 // validateRedirectURI validates that a redirect URI is well-formed

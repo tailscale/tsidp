@@ -1,4 +1,4 @@
-.PHONY: build build-osx build-linux test clean docker-image
+.PHONY: build build-osx build-linux test test-dev clean docker-image
 
 build: build-osx build-linux
 
@@ -15,6 +15,10 @@ docker-image:
 
 test:
 	go test -count 1  . ./server
+
+test-dev:
+	go test . ./server
+	staticcheck ./server/... || true
 
 clean:
 	rm -f build/tsidp-server*

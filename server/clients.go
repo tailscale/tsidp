@@ -150,6 +150,13 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for /clients/{id}/regenerate-secret endpoint
+	if strings.HasSuffix(path, "/regenerate-secret") {
+		clientID := strings.TrimSuffix(path, "/regenerate-secret")
+		s.serveRegenerateSecret(w, r, clientID)
+		return
+	}
+
 	s.mu.Lock()
 	c, ok := s.funnelClients[path]
 	s.mu.Unlock()
@@ -169,6 +176,8 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 			Secret:       "",
 			RedirectURIs: c.RedirectURIs,
 		})
+	case "PUT":
+		s.serveUpdateClient(w, r, path)
 	default:
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
 	}
@@ -280,6 +289,87 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveUpdateClient updates an existing OAuth client
+func (s *IDPServer) serveUpdateClient(w http.ResponseWriter, r *http.Request, clientID string) {
+	if r.Method != "PUT" {
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
+		return
+	}
+
+	redirectURI := r.FormValue("redirect_uri")
+	name := r.FormValue("name")
+
+	if redirectURI == "" {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "missing redirect_uri", nil)
+		return
+	}
+
+	// Validate redirect URIs
+	uris := splitRedirectURIs(redirectURI)
+	if len(uris) == 0 {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "redirect_uri cannot be empty", nil)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	client, ok := s.funnelClients[clientID]
+	if !ok {
+		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "client not found", nil)
+		return
+	}
+
+	// Update client fields
+	if name != "" {
+		client.Name = name
+	}
+	client.RedirectURIs = uris
+
+	if err := s.storeFunnelClientsLocked(); err != nil {
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store client", err)
+		return
+	}
+
+	// Return updated client without secret
+	json.NewEncoder(w).Encode(&FunnelClient{
+		ID:           client.ID,
+		Name:         client.Name,
+		Secret:       "",
+		RedirectURIs: client.RedirectURIs,
+		CreatedAt:    client.CreatedAt,
+	})
+}
+
+// serveRegenerateSecret regenerates the client secret for an existing OAuth client
+func (s *IDPServer) serveRegenerateSecret(w http.ResponseWriter, r *http.Request, clientID string) {
+	if r.Method != "POST" {
+		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	client, ok := s.funnelClients[clientID]
+	if !ok {
+		writeHTTPError(w, r, http.StatusNotFound, ecNotFound, "client not found", nil)
+		return
+	}
+
+	// Generate new secret
+	newSecret := generateClientSecret()
+	client.Secret = newSecret
+
+	if err := s.storeFunnelClientsLocked(); err != nil {
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store client", err)
+		return
+	}
+
+	// Return client with new secret included
+	json.NewEncoder(w).Encode(client)
 }
 
 // serveDynamicClientRegistration handles OAuth 2.0 Dynamic Client Registration (RFC 7591)
