@@ -53,7 +53,7 @@ type IDPServer struct {
 	localTSMode bool // use local tailscaled instead of tsnet
 	enableSTS   bool
 
-	lazyMux        lazy.SyncValue[*http.ServeMux]
+	lazyMux        lazy.SyncValue[http.Handler]
 	lazySigningKey lazy.SyncValue[*signingKey]
 	lazySigner     lazy.SyncValue[jose.Signer]
 
@@ -239,7 +239,7 @@ func (s *IDPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // newMux creates the HTTP request multiplexer
 // Migrated from legacy/tsidp.go:674-687
-func (s *IDPServer) newMux() *http.ServeMux {
+func (s *IDPServer) newMux() http.Handler {
 
 	mux := http.NewServeMux()
 
@@ -272,12 +272,12 @@ func (s *IDPServer) newMux() *http.ServeMux {
 
 	// Register /clients/ - API access to manage clients DB
 	// wrap it in a cross origin protection handler to prevent CSRF
-	mux.Handle("/clients/", protect.Handler(s.addGrantAccessContext(s.serveClients)))
+	mux.Handle("/clients/", s.addGrantAccessContext(s.serveClients))
 
 	// Register UI handler - must be last as it handles "/"
-	mux.Handle("/", protect.Handler(s.addGrantAccessContext(s.handleUI)))
+	mux.Handle("/", s.addGrantAccessContext(s.handleUI))
 
-	return mux
+	return protect.Handler(mux)
 }
 
 // oidcSigner returns a JOSE signer for signing JWT tokens
