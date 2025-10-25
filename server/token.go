@@ -148,7 +148,7 @@ func (tc tailscaleClaims) toMap() map[string]any {
 func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Method", "POST, OPTIONS")
+	h.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	h.Set("Access-Control-Allow-Headers", "*")
 
 	if r.Method == "OPTIONS" {

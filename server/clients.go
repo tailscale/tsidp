@@ -293,7 +293,7 @@ func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *htt
 
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Method", "POST, OPTIONS")
+	h.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	h.Set("Access-Control-Allow-Headers", "*")
 
 	if r.Method == "OPTIONS" {

@@ -395,7 +395,7 @@ func TestMetadataCORSHeaders(t *testing.T) {
 
 			// extract the CORS headers
 			accessControlAllowOrigin := rr.Header().Get("Access-Control-Allow-Origin")
-			accessControlAllowMethods := rr.Header().Get("Access-Control-Allow-Method")
+			accessControlAllowMethods := rr.Header().Get("Access-Control-Allow-Methods")
 			accessControlAllowHeaders := rr.Header().Get("Access-Control-Allow-Headers")
 
 			if accessControlAllowOrigin != "*" {

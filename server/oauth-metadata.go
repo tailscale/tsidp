@@ -86,7 +86,7 @@ var (
 func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
+	h.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	h.Set("Access-Control-Allow-Headers", "*")
 
 	// early return for pre-flight OPTIONS requests.
@@ -135,7 +135,7 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
+	h.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	h.Set("Access-Control-Allow-Headers", "*")
 
 	// early return for pre-flight OPTIONS requests.
@@ -184,7 +184,7 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
+	h.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	h.Set("Access-Control-Allow-Headers", "*")
 
 	// early return for pre-flight OPTIONS requests.

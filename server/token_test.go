@@ -1595,7 +1595,7 @@ func TestTokenCORSHeaders(t *testing.T) {
 	s.ServeHTTP(rr, req)
 
 	ao := rr.Header().Get("Access-Control-Allow-Origin")
-	am := rr.Header().Get("Access-Control-Allow-Method")
+	am := rr.Header().Get("Access-Control-Allow-Methods")
 	ah := rr.Header().Get("Access-Control-Allow-Headers")
 
 	if ao != "*" {

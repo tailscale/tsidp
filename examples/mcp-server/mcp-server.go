@@ -84,7 +84,7 @@ func main() {
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", "*")
 			h.Set("Access-Control-Allow-Headers", "*")
-			h.Set("Access-Control-Allow-Method", "GET, POST, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -169,7 +169,7 @@ func oauthProtectedResourceHandler(authServerUrl string, resourceURL string) htt
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", "*")
 			h.Set("Access-Control-Allow-Headers", "*")
-			h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
+			h.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 			w.WriteHeader(http.StatusNoContent)
 
 			return
@@ -190,7 +190,7 @@ func oauthProtectedResourceHandler(authServerUrl string, resourceURL string) htt
 		h := w.Header()
 		h.Set("Content-Type", "application/json")
 		h.Set("Access-Control-Allow-Origin", "*")
-		h.Set("Access-Control-Allow-Method", "GET, OPTIONS")
+		h.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		// allow all to prevent errors from client sending their own bespoke headers
 		// and having the server reject the request.
 		h.Set("Access-Control-Allow-Headers", "*")
