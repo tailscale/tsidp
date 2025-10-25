@@ -365,7 +365,9 @@ func (s *IDPServer) renderFormSuccess(w http.ResponseWriter, r *http.Request, da
 }
 
 // isDangerousScheme returns true if the scheme should not be allowed
-// in OAuth redirect URIs due to security risks
+// in OAuth redirect URIs due to security risks.
+// The reason for not simply allowlisting http/https is that some native apps can handle
+// special scheme prefixes as an intentional integration.
 func isDangerousScheme(scheme string) bool {
 	switch scheme {
 	case "ftp", "file", "mailto", "javascript", "data",
