@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"filippo.io/csrf"
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
@@ -33,8 +34,6 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/lazy"
 	"tailscale.com/util/mak"
-
-	"filippo.io/csrf"
 )
 
 // CtxConn is a key to look up a net.Conn stored in an HTTP request's context.
@@ -243,9 +242,6 @@ func (s *IDPServer) newMux() http.Handler {
 
 	mux := http.NewServeMux()
 
-	protect := csrf.New()
-	protect.AddTrustedOrigin(s.serverURL)
-
 	// Register .well-known handlers
 	mux.HandleFunc("/.well-known/jwks.json", s.serveJWKS)
 	mux.HandleFunc("/.well-known/openid-configuration", s.serveOpenIDConfig)
@@ -277,6 +273,8 @@ func (s *IDPServer) newMux() http.Handler {
 	// Register UI handler - must be last as it handles "/"
 	mux.Handle("/", s.addGrantAccessContext(s.handleUI))
 
+	protect := csrf.New()
+	protect.AddTrustedOrigin(s.serverURL)
 	return protect.Handler(mux)
 }
 
