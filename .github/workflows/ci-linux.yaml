@@ -27,5 +27,9 @@ jobs:
       run: |
         gofmt -l .
 
-    - name: Run go test
-      run: make test
+    - name: check nix flake is up to date
+      run: |
+        ./update-flake.sh
+        echo
+        echo
+        git diff --name-only --exit-code || (echo "The files above need updating. Please run './update-flake.sh'."; exit 1)

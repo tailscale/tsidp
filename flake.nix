@@ -14,28 +14,7 @@
     }:
     let
       goVersion = "1.24.7";
-      goHash = "sha256-Ko9Q2w+IgDYHxQ1+qINNy3vUg8a0KKkeNg/fhiS0ZGQ=";
-      eachSystem =
-        f:
-        nixpkgs.lib.genAttrs (import systems) (
-          system:
-          f (
-            import nixpkgs {
-              inherit system;
-              overlays = [
-                (final: prev: {
-                  go_1_24 = prev.go_1_24.overrideAttrs {
-                    version = goVersion;
-                    src = prev.fetchurl {
-                      url = "https://go.dev/dl/go${goVersion}.src.tar.gz";
-                      hash = goHash;
-                    };
-                  };
-                })
-              ];
-            }
-          )
-        );
+      eachSystem = f: nixpkgs.lib.genAttrs (import systems) (s: f nixpkgs.legacyPackages.${s});
     in
     {
       formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
@@ -58,7 +37,7 @@
               "-X tailscale.com/version.longStamp=${tsVersion}"
               "-X tailscale.com/version.shortStamp=${tsVersion}"
             ];
-          vendorHash = "sha256-obtcJTg7V4ij3fGVmZMD7QQwKJX6K5PPslpM1XKCk9Q="; # SHA based on vendoring go.mod
+          vendorHash = pkgs.lib.fileContents ./go.mod.sri;
         };
 
         default = self.packages.${pkgs.system}.tsidp;
