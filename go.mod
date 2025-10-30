@@ -1,14 +1,14 @@
 module github.com/tailscale/tsidp
 
-go 1.24.7
+go 1.24.8
 
 require (
+	filippo.io/csrf v0.2.1
 	gopkg.in/square/go-jose.v2 v2.6.0
 	tailscale.com v1.86.5
 )
 
 require (
-	filippo.io/csrf v0.2.1 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
