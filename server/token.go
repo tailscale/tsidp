@@ -775,7 +775,7 @@ func validateCodeVerifier(verifier, challenge, method string) error {
 		return err
 	}
 
-	if generatedChallenge != challenge {
+	if subtle.ConstantTimeCompare([]byte(generatedChallenge), []byte(challenge)) != 1 {
 		return fmt.Errorf("invalid code_verifier")
 	}
 
