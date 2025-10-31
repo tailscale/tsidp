@@ -98,6 +98,10 @@ var (
 	// stsEnabled determines if STS token exchange should be performed
 	stsEnabled bool
 
+	// clientID and clientSecret for static client credentials
+	clientID     string
+	clientSecret string
+
 	// The local address our application will run on to handle the redirect.
 	redirectHost = "http://127.0.0.1:8080"
 	redirectPath = "/auth/callback"
@@ -118,12 +122,20 @@ var (
 // --- Main Application Logic ---
 
 func main() {
-	// Setup and parse the -idp flag for the issuer URL.
+	// Setup and parse the flags.
 	flag.StringVar(&issuerURL, "idp", "", "The issuer URL of the OpenID Connect provider (e.g., https://accounts.google.com)")
 	flag.BoolVar(&stsEnabled, "sts", false, "Enable STS token exchange using urn:ietf:params:oauth:grant-type:token-exchange")
+	flag.StringVar(&clientID, "client_id", "", "Static client ID (if not provided, will use dynamic client registration)")
+	flag.StringVar(&clientSecret, "client_secret", "", "Static client secret (if not provided, will use dynamic client registration)")
 	flag.Parse()
 	if issuerURL == "" {
 		fmt.Println("Error: The -idp flag is required. Please provide the issuer URL of your OIDC provider.")
+		os.Exit(1)
+	}
+
+	// Validate that both client_id and client_secret are provided together or neither
+	if (clientID == "") != (clientSecret == "") {
+		fmt.Println("Error: Both -client_id and -client_secret must be provided together, or neither should be provided.")
 		os.Exit(1)
 	}
 
@@ -139,14 +151,25 @@ func main() {
 	}
 	fmt.Printf("✅ Success. Authorization Endpoint: %s\n", providerMetadata.AuthorizationEndpoint)
 
-	// Step 2: Register a new client using Dynamic Client Registration
-	fmt.Println("\nStep 2: Dynamically registering a new client...")
-	clientCreds, err = registerDynamicClient(ctx, providerMetadata.RegistrationEndpoint)
-	if err != nil {
-		fmt.Printf("Failed to register dynamic client: %v. \nNOTE: Your provider might not support Dynamic Client Registration. If so, configure client_id/secret manually.", err)
-		os.Exit(1)
+	// Step 2: Setup client credentials (either static or dynamic registration)
+	if clientID != "" && clientSecret != "" {
+		// Use static client credentials
+		fmt.Println("\nStep 2: Using provided client credentials...")
+		clientCreds = &ClientCredentials{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+		}
+		fmt.Printf("✅ Success. Using Client ID: %s\n", clientCreds.ClientID)
+	} else {
+		// Register a new client using Dynamic Client Registration
+		fmt.Println("\nStep 2: Dynamically registering a new client...")
+		clientCreds, err = registerDynamicClient(ctx, providerMetadata.RegistrationEndpoint)
+		if err != nil {
+			fmt.Printf("Failed to register dynamic client: %v. \nNOTE: Your provider might not support Dynamic Client Registration. If so, configure client_id/secret manually using -client_id and -client_secret flags.", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✅ Success. Registered Client ID: %s\n", clientCreds.ClientID)
 	}
-	fmt.Printf("✅ Success. Registered Client ID: %s\n", clientCreds.ClientID)
 
 	// Step 3: Generate Authorization URL and attempt automated fetch.
 	fmt.Println("\nStep 3: Awaiting user authorization...")
