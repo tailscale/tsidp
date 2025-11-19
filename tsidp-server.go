@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -37,20 +38,20 @@ import (
 // Command line flags
 // Migrated from legacy/tsidp.go:64-73
 var (
-	flagPort               = flag.Int("port", 443, "port to listen on")
-	flagLocalPort          = flag.Int("local-port", -1, "allow requests from localhost")
-	flagUseLocalTailscaled = flag.Bool("use-local-tailscaled", false, "use local tailscaled instead of tsnet")
-	flagFunnel             = flag.Bool("funnel", false, "use Tailscale Funnel to make tsidp available on the public internet")
-	flagHostname           = flag.String("hostname", "idp", "tsnet hostname to use instead of idp")
-	flagDir                = flag.String("dir", "", "tsnet state directory; a default one will be created if not provided")
-	flagEnableSTS          = flag.Bool("enable-sts", false, "enable OIDC STS token exchange support")
+	flagPort               = flag.Int("port", envIntOr("TSIDP_PORT", 443), "port to listen on")
+	flagLocalPort          = flag.Int("local-port", envIntOr("TSIDP_LOCAL_PORT", -1), "allow requests from localhost")
+	flagUseLocalTailscaled = flag.Bool("use-local-tailscaled", envknob.Bool("TSIDP_USE_LOCAL_TAILSCALED"), "use local tailscaled instead of tsnet")
+	flagFunnel             = flag.Bool("funnel", envknob.Bool("TSIDP_USE_FUNNEL"), "use Tailscale Funnel to make tsidp available on the public internet")
+	flagHostname           = flag.String("hostname", cmp.Or(envknob.String("TS_HOSTNAME"), "idp"), "tsnet hostname to use instead of idp")
+	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
+	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
 
 	// application logging levels
-	flagLogLevel = flag.String("log", "info", "log levels: debug, info, warn, error")
+	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
 
 	// extended debugging information
-	flagDebugAllRequests = flag.Bool("debug-all-requests", false, "capture and print all HTTP requests and responses")
-	flagDebugTSNet       = flag.Bool("debug-tsnet", false, "enable tsnet.Server logging")
+	flagDebugAllRequests = flag.Bool("debug-all-requests", envknob.Bool("TSIDP_DEBUG_ALL_REQUESTS"), "capture and print all HTTP requests and responses")
+	flagDebugTSNet       = flag.Bool("debug-tsnet", envknob.Bool("TSIDP_DEBUG_TSNET"), "enable tsnet.Server logging")
 )
 
 // main initializes and starts the tsidp server
@@ -344,4 +345,12 @@ func (rw *responseWrapper) Write(b []byte) (int, error) {
 
 	// Write to the original response writer
 	return rw.ResponseWriter.Write(b)
+}
+
+func envIntOr(envVar string, implicitValue int) int {
+	val, ok := envknob.LookupInt(envVar)
+	if !ok {
+		return implicitValue
+	}
+	return val
 }
