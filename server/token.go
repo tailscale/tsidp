@@ -622,8 +622,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		return
 	}
 
-	// Add new access token and refresh token to the token store
-	at := rands.HexString(32)
+	at := token
 	rt := rands.HexString(32)
 
 	s.mu.Lock()
@@ -910,6 +909,9 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 			resp["scope"] = strings.Join(ar.Scopes, " ")
 		}
 
+		// Include extra claims from capability if present (best-effort)
+		addExtraClaims(resp, ar)
+
 		// Include act claim if present (RFC 8693)
 		if ar.ActorInfo != nil {
 			resp["act"] = ar.ActorInfo
@@ -948,4 +950,21 @@ func (ar *AuthRequest) allowRelyingParty(r *http.Request) (int, error) {
 		return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret: [%s] [%s]", clientID, clientSecret)
 	}
 	return http.StatusOK, nil
+}
+
+// addExtraClaims adds extra claims from the user's capabilities to the response map.
+// It does not overwrite existing keys in the response.
+func addExtraClaims(resp map[string]any, ar *AuthRequest) {
+	if ar.RemoteUser == nil || ar.RemoteUser.CapMap == nil {
+		return
+	}
+	rules, err := tailcfg.UnmarshalCapJSON[capRule](ar.RemoteUser.CapMap, tailcfg.PeerCapabilityTsIDP)
+	if err != nil {
+		return
+	}
+	for k, v := range flattenExtraClaims(rules) {
+		if _, exists := resp[k]; !exists {
+			resp[k] = v
+		}
+	}
 }
