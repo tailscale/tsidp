@@ -29,8 +29,11 @@ FROM --platform=$TARGETPLATFORM alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
+RUN mkdir -p /data
+
 RUN addgroup -g 1001 -S app && \
-    adduser -u 1001 -S app
+    adduser -u 1001 -S app && \
+    chown app:app /data
 
 # Copy the binary from builder
 COPY --from=builder /app/tsidp-server /tsidp-server
