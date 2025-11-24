@@ -41,6 +41,11 @@ services:
       - TSIDP_ENABLE_STS=1 # Enable OAuth token exchange
       # Optional: Tailscale auth key for automatic node registration
       # - TS_AUTHKEY=tskey-auth-xxxxx
+
+    # using the named "tsidp-data" volume below requires root access
+    # for more secure deployments mount a local directory that is owned by
+    # uid: 1001 and gid: 1001.
+    user: root
 volumes:
   tsidp-data:
 ```
