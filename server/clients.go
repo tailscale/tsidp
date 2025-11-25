@@ -18,7 +18,6 @@ import (
 )
 
 // FunnelClient represents an OAuth/OIDC client configuration
-// Migrated from legacy/tsidp.go:2006-2024
 type FunnelClient struct {
 	ID                      string    `json:"client_id"`
 	Secret                  string    `json:"client_secret,omitempty"`
@@ -100,7 +99,6 @@ func (s *IDPServer) LoadFunnelClients() error {
 
 // storeFunnelClientsLocked persists the funnel clients to disk
 // Caller must hold s.mu lock
-// Migrated from legacy/tsidp.go:2270-2276
 func (s *IDPServer) storeFunnelClientsLocked() error {
 	var buf bytes.Buffer
 
@@ -119,7 +117,6 @@ func (s *IDPServer) storeFunnelClientsLocked() error {
 }
 
 // serveClients handles the /clients/ endpoints for managing OAuth clients
-// Migrated from legacy/tsidp.go:2055-2094
 func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 	if isFunnelRequest(r) {
 		writeHTTPError(w, r, http.StatusUnauthorized, ecAccessDenied, "not available over funnel", nil)
@@ -175,7 +172,6 @@ func (s *IDPServer) serveClients(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveNewClient creates a new OAuth client
-// Migrated from legacy/tsidp.go:2096-2126
 func (s *IDPServer) serveNewClient(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
@@ -217,7 +213,6 @@ func (s *IDPServer) serveNewClient(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveGetClientsList returns a list of all OAuth clients
-// Migrated from legacy/tsidp.go:2128-2145
 func (s *IDPServer) serveGetClientsList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
@@ -241,7 +236,6 @@ func (s *IDPServer) serveGetClientsList(w http.ResponseWriter, r *http.Request) 
 }
 
 // serveDeleteClient deletes an OAuth client
-// Migrated from legacy/tsidp.go:2239-2265
 func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, clientID string) {
 	if r.Method != "DELETE" {
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
@@ -283,7 +277,6 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 }
 
 // serveDynamicClientRegistration handles OAuth 2.0 Dynamic Client Registration (RFC 7591)
-// Migrated from legacy/tsidp.go:2149-2237
 func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *http.Request) {
 	// Block funnel requests - dynamic registration is only available over tailnet
 	if isFunnelRequest(r) {
@@ -396,7 +389,6 @@ func (s *IDPServer) serveDynamicClientRegistration(w http.ResponseWriter, r *htt
 }
 
 // Helper functions for redirect URI handling
-// Migrated from legacy/tsidp.go
 
 // splitRedirectURIs splits a multi-line string of redirect URIs into a slice
 func splitRedirectURIs(uris string) []string {

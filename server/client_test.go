@@ -16,7 +16,6 @@ import (
 )
 
 // TestFunnelClientBackwardCompatibility tests backward compatibility for client field names
-// Migrated from legacy/tsidp_test.go:24-106
 func TestFunnelClientBackwardCompatibility(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -110,7 +109,6 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 }
 
 // TestServeDynamicClientRegistration tests the dynamic client registration endpoint
-// Migrated from legacy/tsidp_test.go:108-321
 func TestServeDynamicClientRegistration(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -398,7 +396,6 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 }
 
 // TestRedirectURIValidation tests redirect URI validation logic
-// Migrated from legacy/tsidp_test.go:323-385
 func TestRedirectURIValidation(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -466,7 +463,6 @@ func TestRedirectURIValidation(t *testing.T) {
 }
 
 // TestSplitRedirectURIs tests splitting redirect URIs from a newline-separated string
-// Migrated from legacy/ui_test.go:11-52
 func TestSplitRedirectURIs(t *testing.T) {
 	// Helper function that mimics the UI helper
 	splitRedirectURIs := func(input string) []string {
@@ -528,7 +524,6 @@ func TestSplitRedirectURIs(t *testing.T) {
 }
 
 // TestJoinRedirectURIs tests joining redirect URIs into a newline-separated string
-// Migrated from legacy/ui_test.go:54-90
 func TestJoinRedirectURIs(t *testing.T) {
 	// Helper function that mimics the UI helper
 	joinRedirectURIs := func(uris []string) string {

@@ -35,7 +35,6 @@ import (
 )
 
 // Command line flags
-// Migrated from legacy/tsidp.go:64-73
 var (
 	flagPort               = flag.Int("port", 443, "port to listen on")
 	flagLocalPort          = flag.Int("local-port", -1, "allow requests from localhost")
@@ -54,7 +53,6 @@ var (
 )
 
 // main initializes and starts the tsidp server
-// Migrated from legacy/tsidp.go:75-239
 func main() {
 	flag.Parse()
 	ctx := context.Background()

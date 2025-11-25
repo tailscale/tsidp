@@ -12,7 +12,6 @@ import (
 )
 
 // TestMetadataEndpoints tests OpenID Connect Discovery and OAuth 2.0 Authorization Server Metadata endpoints
-// Migrated from legacy/tsidp_test.go:387-461
 func TestMetadataEndpoints(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -114,7 +113,6 @@ func TestMetadataEndpoints(t *testing.T) {
 }
 
 // TestOAuthMetadataRefreshTokenSupport tests that refresh_token grant is properly advertised
-// Migrated from legacy/tsidp_test.go:724-756
 func TestOAuthMetadataRefreshTokenSupport(t *testing.T) {
 	s := &IDPServer{
 		serverURL:   "https://idp.test.ts.net",
@@ -155,7 +153,6 @@ func TestOAuthMetadataRefreshTokenSupport(t *testing.T) {
 }
 
 // TestPKCEMetadata tests that PKCE methods are properly advertised in metadata
-// Migrated from legacy/tsidp_test.go:1844-1923
 func TestPKCEMetadata(t *testing.T) {
 	s := &IDPServer{
 		serverURL:   "https://idp.test.ts.net",

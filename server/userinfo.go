@@ -14,7 +14,6 @@ import (
 )
 
 // userInfo represents the OpenID Connect UserInfo response
-// Migrated from legacy/tsidp.go:771-777
 type userInfo struct {
 	Sub      string `json:"sub"`
 	Name     string `json:"name,omitempty"`
@@ -49,7 +48,6 @@ func (ui userInfo) toMap() map[string]any {
 }
 
 // serveUserInfo handles the /userinfo endpoint
-// Migrated from legacy/tsidp.go:694-769
 func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
@@ -123,7 +121,6 @@ func (s *IDPServer) serveUserInfo(w http.ResponseWriter, r *http.Request) {
 
 // writeBearerError writes an RFC 6750 compliant Bearer token error response
 // with WWW-Authenticate header per section 3.1
-// Migrated from legacy/tsidp.go:1643-1651
 func writeBearerError(w http.ResponseWriter, statusCode int, errorCode, errorDescription string) {
 	// Build WWW-Authenticate header value
 	authHeader := fmt.Sprintf(`Bearer error="%s"`, errorCode)

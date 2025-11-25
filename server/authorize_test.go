@@ -17,7 +17,6 @@ import (
 )
 
 // TestScopeHandling tests OAuth scope validation and handling
-// Migrated from legacy/tsidp_test.go:2027-2167
 func TestScopeHandling(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -243,7 +242,6 @@ func TestValidateScopes(t *testing.T) {
 }
 
 // TestPKCE tests PKCE (Proof Key for Code Exchange) implementation (RFC 7636)
-// Migrated from legacy/tsidp_test.go:1681-1842
 func TestPKCE(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -408,7 +406,6 @@ func TestPKCE(t *testing.T) {
 }
 
 // TestPKCEWithRefreshToken tests PKCE with refresh token flow
-// Migrated from legacy/tsidp_test.go:1925-2025
 func TestPKCEWithRefreshToken(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",

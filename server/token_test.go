@@ -21,7 +21,6 @@ import (
 )
 
 // TestResourceIndicators tests RFC 8707 resource indicators support
-// Migrated from legacy/tsidp_test.go:2468-2652
 func TestResourceIndicators(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -219,7 +218,6 @@ func TestResourceIndicators(t *testing.T) {
 }
 
 // TestIntrospectTokenExpiration tests introspection of expired tokens
-// Migrated from legacy/tsidp_test.go:2332-2375
 func TestIntrospectTokenExpiration(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
@@ -276,7 +274,6 @@ func TestIntrospectTokenExpiration(t *testing.T) {
 }
 
 // TestIntrospectWithResources tests introspection with resources
-// Migrated from legacy/tsidp_test.go:2377-2431
 func TestIntrospectWithResources(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
@@ -460,7 +457,6 @@ func TestIntrospectionRFC7662Compliance(t *testing.T) {
 }
 
 // TestRefreshTokenFlow tests refresh token grant flow
-// Migrated from legacy/tsidp_test.go:1791-1940
 func TestRefreshTokenFlow(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -661,7 +657,6 @@ func TestRefreshTokenFlow(t *testing.T) {
 }
 
 // TestTokenEndpointUnsupportedGrantType tests unsupported grant type handling
-// Migrated from legacy/tsidp_test.go:1942-2003
 func TestTokenEndpointUnsupportedGrantType(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -729,7 +724,6 @@ func TestTokenEndpointUnsupportedGrantType(t *testing.T) {
 }
 
 // TestTokenExpiration tests token expiration handling
-// Migrated from legacy/tsidp_test.go:2005-2069
 func TestTokenExpiration(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -807,7 +801,6 @@ func TestTokenExpiration(t *testing.T) {
 }
 
 // TestRefreshTokenWithResources tests refresh tokens with resource downscoping (RFC 8707)
-// Migrated from legacy/tsidp_test.go:1076-1187
 func TestRefreshTokenWithResources(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -918,7 +911,6 @@ func TestRefreshTokenWithResources(t *testing.T) {
 }
 
 // TestRefreshTokenScopePreservation tests scope preservation in refresh tokens
-// Migrated from legacy/tsidp_test.go:1460-1541
 func TestRefreshTokenScopePreservation(t *testing.T) {
 	s := New(nil, "", false, false, false)
 
@@ -999,7 +991,6 @@ func TestRefreshTokenScopePreservation(t *testing.T) {
 }
 
 // TestAZPClaimWithMultipleAudiences tests azp claim handling with multiple audiences
-// Migrated from legacy/tsidp_test.go:1543-1679
 func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 	tests := []struct {
 		name              string

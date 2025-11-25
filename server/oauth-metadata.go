@@ -13,7 +13,6 @@ import (
 )
 
 // openIDProviderMetadata is a partial representation of OpenID Provider Metadata.
-// Migrated from legacy/tsidp.go:1754-1771
 type openIDProviderMetadata struct {
 	Issuer                           string              `json:"issuer"`
 	AuthorizationEndpoint            string              `json:"authorization_endpoint,omitempty"`
@@ -33,7 +32,6 @@ type openIDProviderMetadata struct {
 
 // oauthAuthorizationServerMetadata is a representation of
 // OAuth 2.0 Authorization Server Metadata as defined in RFC 8414.
-// Migrated from legacy/tsidp.go:1773-1790
 type oauthAuthorizationServerMetadata struct {
 	Issuer                             string              `json:"issuer"`
 	AuthorizationEndpoint              string              `json:"authorization_endpoint"`
@@ -51,7 +49,6 @@ type oauthAuthorizationServerMetadata struct {
 }
 
 // Supported OpenID/OAuth metadata constants
-// Migrated from legacy/tsidp.go:1816-1845
 var (
 	openIDSupportedClaims = views.SliceOf([]string{
 		// Standard claims, these correspond to fields in jwt.Claims.
@@ -82,7 +79,6 @@ var (
 )
 
 // serveOpenIDConfig serves the OpenID Connect discovery endpoint
-// Migrated from legacy/tsidp.go:1847-1923
 func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
@@ -131,7 +127,6 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveOAuthMetadata serves the OAuth 2.0 Authorization Server metadata endpoint
-// Migrated from legacy/tsidp.go:1925-2001
 func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
@@ -180,7 +175,6 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveJWKS serves the JSON Web Key Set endpoint
-// Migrated from legacy/tsidp.go:1723-1750
 func (s *IDPServer) serveJWKS(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")

@@ -147,7 +147,6 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateScopes validates the requested OAuth scopes
-// Migrated from legacy/tsidp.go:399-423
 func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	if len(requestedScopes) == 0 {
 		// Default to openid scope if none specified

@@ -37,11 +37,9 @@ import (
 )
 
 // CtxConn is a key to look up a net.Conn stored in an HTTP request's context.
-// Migrated from legacy/tsidp.go:58
 type CtxConn struct{}
 
 // IDPServer handles OIDC identity provider operations
-// Migrated from legacy/tsidp.go:306-323
 type IDPServer struct {
 	lc          *local.Client
 	loopbackURL string
@@ -140,7 +138,6 @@ type AuthRequest struct {
 
 // ActorClaim represents the 'act' claim structure defined in RFC 8693 Section 4.1
 // for delegation scenarios in token exchange.
-// Migrated from legacy/tsidp.go:391-395
 type ActorClaim struct {
 	Subject  string      `json:"sub"`
 	ClientID string      `json:"client_id,omitempty"`
@@ -148,7 +145,6 @@ type ActorClaim struct {
 }
 
 // signingKey represents a JWT signing key
-// Migrated from legacy/tsidp.go:2336-2339
 type signingKey struct {
 	Kid uint64          `json:"kid"`
 	Key *rsa.PrivateKey `json:"-"`
@@ -201,7 +197,6 @@ func (s *IDPServer) SetLoopbackURL(url string) {
 }
 
 // CleanupExpiredTokens removes expired tokens from memory
-// Migrated from legacy/tsidp.go:2280-2299
 func (s *IDPServer) CleanupExpiredTokens() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -231,13 +226,11 @@ func (s *IDPServer) CleanupExpiredTokens() {
 }
 
 // ServeHTTP implements http.Handler
-// Migrated from legacy/tsidp.go:689-692
 func (s *IDPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.lazyMux.Get(s.newMux).ServeHTTP(w, r)
 }
 
 // newMux creates the HTTP request multiplexer
-// Migrated from legacy/tsidp.go:674-687
 func (s *IDPServer) newMux() http.Handler {
 
 	mux := http.NewServeMux()
@@ -248,19 +241,15 @@ func (s *IDPServer) newMux() http.Handler {
 	mux.HandleFunc("/.well-known/oauth-authorization-server", s.serveOAuthMetadata)
 
 	// Register /authorize endpoint
-	// Migrated from legacy/tsidp.go:679
 	mux.HandleFunc("/authorize", s.serveAuthorize)
 
 	// Register /token endpoint
-	// Migrated from legacy/tsidp.go:681
 	mux.HandleFunc("/token", s.serveToken)
 
 	// Register /introspect endpoint
-	// Migrated from legacy/tsidp.go:682
 	mux.HandleFunc("/introspect", s.serveIntrospect)
 
 	// Register /userinfo endpoint
-	// Migrated from legacy/tsidp.go:680
 	mux.HandleFunc("/userinfo", s.serveUserInfo)
 
 	// Register /register endpoint for Dynamic Client Registration
@@ -279,7 +268,6 @@ func (s *IDPServer) newMux() http.Handler {
 }
 
 // oidcSigner returns a JOSE signer for signing JWT tokens
-// Migrated from legacy/tsidp.go:1682-1696
 func (s *IDPServer) oidcSigner() (jose.Signer, error) {
 	return s.lazySigner.GetErr(func() (jose.Signer, error) {
 		sk, err := s.oidcPrivateKey()
@@ -353,7 +341,6 @@ func genRSAKey(bits int) (kid uint64, k *rsa.PrivateKey, err error) {
 }
 
 // readUint64 reads a uint64 from the given reader
-// Migrated from legacy/tsidp.go:2317-2329
 func readUint64(r io.Reader) (uint64, error) {
 	b := make([]byte, 8)
 	if _, err := r.Read(b); err != nil {
@@ -369,7 +356,6 @@ type rsaPrivateKeyJSONWrapper struct {
 }
 
 // MarshalJSON serializes the signing key to JSON
-// Migrated from legacy/tsidp.go:2341-2351
 func (sk *signingKey) MarshalJSON() ([]byte, error) {
 	if sk.Key == nil {
 		return nil, fmt.Errorf("signing key is nil")
@@ -387,7 +373,6 @@ func (sk *signingKey) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON deserializes the signing key from JSON
-// Migrated from legacy/tsidp.go:2353-2375
 func (sk *signingKey) UnmarshalJSON(b []byte) error {
 	var wrapper rsaPrivateKeyJSONWrapper
 	if err := json.Unmarshal(b, &wrapper); err != nil {
@@ -407,7 +392,6 @@ func (sk *signingKey) UnmarshalJSON(b []byte) error {
 }
 
 // ServeOnLocalTailscaled starts a serve session using an already-running tailscaled
-// Migrated from legacy/tsidp.go:244-304
 func ServeOnLocalTailscaled(ctx context.Context, lc *local.Client, st *ipnstate.Status, dstPort uint16, shouldFunnel bool) (cleanup func(), watcherChan chan error, err error) {
 	// In order to support funneling out in local tailscaled mode, we need
 	// to add a serve config to forward the listeners we bound above and
