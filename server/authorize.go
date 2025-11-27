@@ -135,7 +135,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	mak.Set(&s.code, code, ar)
 	s.mu.Unlock()
 
-	queryString := make(url.Values)
+	queryString := parsedURL.Query()
 	queryString.Set("code", code)
 	if state := uq.Get("state"); state != "" {
 		queryString.Set("state", state)
