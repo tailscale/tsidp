@@ -6,7 +6,7 @@
 # docker buildx build --platform linux/amd64 -t tsidp-server:amd64 --load .
 
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 WORKDIR /app
 
 # BuildKit will set these automatically when using buildx
@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -a -installsuffix cgo -o tsidp-server .
 
 # Final stage
-FROM --platform=$TARGETPLATFORM alpine:3.22
+FROM alpine:3.22
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 

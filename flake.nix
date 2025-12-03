@@ -13,14 +13,35 @@
       systems,
     }:
     let
-      goVersion = "1.24.7";
-      eachSystem = f: nixpkgs.lib.genAttrs (import systems) (s: f nixpkgs.legacyPackages.${s});
+      goVersion = "1.26.0";
+      goHash = "sha256-yRMqih9r0qpKrR10uCMdlSdJUEg6SVBlfubFbm6Bd5A=";
+      eachSystem =
+        f:
+        nixpkgs.lib.genAttrs (import systems) (
+          system:
+          f (
+            import nixpkgs {
+              inherit system;
+              overlays = [
+                (final: prev: {
+                  go_1_26 = prev.go_1_26.overrideAttrs {
+                    version = goVersion;
+                    src = prev.fetchurl {
+                      url = "https://go.dev/dl/go${goVersion}.src.tar.gz";
+                      hash = goHash;
+                    };
+                  };
+                })
+              ];
+            }
+          )
+        );
     in
     {
       formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
 
       packages = eachSystem (pkgs: {
-        tsidp = pkgs.buildGo124Module {
+        tsidp = pkgs.buildGo126Module {
           pname = "tsidp";
           version = if (self ? shortRev) then self.shortRev else "dev";
           src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
