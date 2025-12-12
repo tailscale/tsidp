@@ -9,7 +9,7 @@
 
 ## Prerequisites
 
-- A Tailscale network (tailnet) with magicDNS and HTTPS enabled
+- A Tailscale network (tailnet) with MagicDNS and HTTPS enabled
 - A Tailscale authentication key from your tailnet
 - (Recommended) Docker installed on your system
 - Ability to set an Application capability grant
@@ -18,12 +18,12 @@
 
 ### (Recommended) Using the pre-built image
 
-Docker images are automatically published on when releases are tagged.
+Docker images are automatically published on Docker Hub when releases are tagged.
 
 > [!TIP]
 > Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
 >
-> Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
+> Use an existing auth key or create a new auth key in the [**Keys**](https://login.tailscale.com/admin/settings/keys) page of the Tailscale admin console. Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
 
 Here is an example [docker compose](https://docs.docker.com/compose/) YAML file for tsidp:
 
@@ -88,7 +88,7 @@ $ TAILSCALE_USE_WIP_CODE=1 TS_AUTHKEY={YOUR_TAILSCALE_AUTHKEY} TSNET_FORCE_LOGIN
 > tsidp's application capability schema are still in development and may change at anytime.
 
 - Set an [Application capability](https://tailscale.com/kb/1537/grants-app-capabilities) to grant access to the admin UI and DCR endpoints.
-- Configure grants in the [Tailscale console](https://login.tailscale.com/admin/acls/).
+- Configure grants in the [**Access controls**](https://login.tailscale.com/admin/acls/) page of the Tailscale admin console.
 - App capability grants are per request and updated immediately. No need to restart tsidp.
 
 ### Example
@@ -152,7 +152,7 @@ The `tsidp-server` is configured by several command-line flags:
 
 ### CLI Environment Variables
 
-The `tsidp-server` binary is configured through the CLI flags above. However, there are several environment variables that configure the libraries `tsidp-server` uses to connect to the Tailnet.
+The `tsidp-server` binary is configured through the CLI flags above. However, there are several environment variables that configure the libraries `tsidp-server` uses to connect to the tailnet.
 
 #### Required
 
