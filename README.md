@@ -18,7 +18,7 @@
 
 ### (Recommended) Using the pre-built image
 
-Docker images are automatically published on Docker Hub when releases are tagged.
+Docker images are automatically published at <https://ghcr.io/tailscale/tsidp> when releases are tagged.
 
 > [!TIP]
 > Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
