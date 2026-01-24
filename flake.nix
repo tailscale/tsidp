@@ -40,11 +40,11 @@
           vendorHash = pkgs.lib.fileContents ./go.mod.sri;
         };
 
-        default = self.packages.${pkgs.system}.tsidp;
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.tsidp;
       });
 
       overlays.default = final: prev: {
-        tsidp = self.packages.${final.system}.tsidp;
+        tsidp = self.packages.${final.stdenv.hostPlatform.system}.tsidp;
       };
 
       devShells = eachSystem (pkgs: {
@@ -90,7 +90,7 @@
 
             package = mkOption {
               type = lib.types.package;
-              default = self.packages.${pkgs.system}.tsidp;
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.tsidp;
               description = "Package to use for the tsidp service.";
             };
 
