@@ -1,11 +1,11 @@
 module github.com/tailscale/tsidp
 
-go 1.26rc2
+go 1.26
 
 require (
 	filippo.io/csrf v0.2.1
 	gopkg.in/square/go-jose.v2 v2.6.0
-	tailscale.com v1.94.1
+	tailscale.com v1.94.2
 )
 
 require (
