@@ -27,6 +27,10 @@ if [ -n "$TSIDP_LOCAL_PORT" ]; then
     ARGS="$ARGS -local-port=$TSIDP_LOCAL_PORT"
 fi
 
+if [ -n "$TS_AUTHKEY_FILE" ]; then
+    ARGS="$ARGS -ts-authkey-file=$TS_AUTHKEY_FILE"
+fi
+
 # logging control
 if [ -n "$TSIDP_LOG" ]; then
     case "$TSIDP_LOG" in

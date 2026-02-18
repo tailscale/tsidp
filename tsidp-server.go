@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,7 +29,6 @@ import (
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
-
 	"tailscale.com/tsnet"
 	"tailscale.com/version"
 )
@@ -49,6 +49,8 @@ var (
 	// extended debugging information
 	flagDebugAllRequests = flag.Bool("debug-all-requests", false, "capture and print all HTTP requests and responses")
 	flagDebugTSNet       = flag.Bool("debug-tsnet", false, "enable tsnet.Server logging")
+
+	flagAuthKeyFile = flag.String("ts-authkey-file", "", "authkey file")
 )
 
 // main initializes and starts the tsidp server
@@ -120,9 +122,27 @@ func main() {
 		defer cleanup()
 	} else {
 		hostinfo.SetApp("tsidp")
+		if *flagAuthKeyFile != "" {
+			f, _ := filepath.Abs(*flagAuthKeyFile)
+			file, err := os.Open(f)
+			if err != nil {
+				slog.Error("error opening auth key file", slog.Any("err", err))
+				os.Exit(1)
+			}
+			authKeyBytes, err := io.ReadAll(file)
+			if err != nil {
+				slog.Error("error reading auth key file", slog.Any("err", err))
+				os.Exit(1)
+			}
+			// reuse tsAuthKeyFile variable
+			*flagAuthKeyFile = string(authKeyBytes)
+		}
 		ts := &tsnet.Server{
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
+		}
+		if *flagAuthKeyFile != "" {
+			ts.AuthKey = *flagAuthKeyFile
 		}
 		if *flagDebugTSNet {
 			ts.Logf = func(format string, args ...any) {
