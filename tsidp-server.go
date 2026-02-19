@@ -26,6 +26,7 @@ import (
 	"github.com/tailscale/tsidp/server"
 
 	"tailscale.com/client/local"
+	"tailscale.com/envknob"
 	"tailscale.com/hostinfo"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"

@@ -33,3 +33,8 @@ jobs:
         echo
         echo
         git diff --name-only --exit-code || (echo "The files above need updating. Please run './update-flake.sh'."; exit 1)
+
+    - name: Build and test
+      run: |
+        go build ./...
+        go test -v ./...
