@@ -54,11 +54,11 @@ func TestResourceIndicators(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to parse JWT: %v", err)
 				}
-				var claims map[string]interface{}
+				var claims map[string]any
 				if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 					t.Fatalf("failed to get claims: %v", err)
 				}
-				aud, ok := claims["aud"].([]interface{})
+				aud, ok := claims["aud"].([]any)
 				if !ok {
 					t.Fatalf("expected aud to be an array, got %T", claims["aud"])
 				}
@@ -91,11 +91,11 @@ func TestResourceIndicators(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to parse JWT: %v", err)
 				}
-				var claims map[string]interface{}
+				var claims map[string]any
 				if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 					t.Fatalf("failed to get claims: %v", err)
 				}
-				aud, ok := claims["aud"].([]interface{})
+				aud, ok := claims["aud"].([]any)
 				if !ok {
 					t.Fatalf("expected aud to be an array, got %T", claims["aud"])
 				}
@@ -258,7 +258,7 @@ func TestIntrospectTokenExpiration(t *testing.T) {
 	}
 
 	// Check response shows token as inactive
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestIntrospectWithResources(t *testing.T) {
 	}
 
 	// Check response shows token as active with resources in audience
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestIntrospectWithResources(t *testing.T) {
 	}
 
 	// Check that resources are included in audience
-	if aud, ok := resp["aud"].([]interface{}); ok {
+	if aud, ok := resp["aud"].([]any); ok {
 		expectedAudiences := []string{"test-client", "https://api1.example.com", "https://api2.example.com"}
 		if len(aud) != len(expectedAudiences) {
 			t.Errorf("expected %d audience values, got %d", len(expectedAudiences), len(aud))
@@ -401,7 +401,7 @@ func TestIntrospectionRFC7662Compliance(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "",
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -520,7 +520,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "invalid-token",
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -538,7 +538,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "expired-token",
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -707,7 +707,7 @@ func TestTokenEndpointUnsupportedGrantType(t *testing.T) {
 			}
 
 			// Check JSON error response per RFC 6749
-			var errResp map[string]interface{}
+			var errResp map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
 				t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
 			}
@@ -1081,7 +1081,7 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 				t.Fatalf("failed to parse JWT: %v", err)
 			}
 
-			var claims map[string]interface{}
+			var claims map[string]any
 			if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 				t.Fatalf("failed to get claims: %v", err)
 			}
@@ -1093,7 +1093,7 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 			}
 
 			// The JWT library always serializes audience as an array
-			audArray, isArray := aud.([]interface{})
+			audArray, isArray := aud.([]any)
 			if !isArray {
 				t.Errorf("expected audience to be array, got %T", aud)
 			}

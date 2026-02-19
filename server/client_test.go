@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 			// Since FunnelClient doesn't have custom UnmarshalJSON in the new structure,
 			// we need to handle backward compatibility differently.
 			// For now, we'll test the expected format directly.
-			var rawData map[string]interface{}
+			var rawData map[string]any
 			if err := json.Unmarshal([]byte(tt.jsonData), &rawData); err != nil {
 				t.Fatalf("failed to unmarshal raw data: %v", err)
 			}
@@ -88,7 +89,7 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 			client.Name = rawData["name"].(string)
 
 			// Handle redirect URIs
-			if uris, ok := rawData["redirect_uris"].([]interface{}); ok {
+			if uris, ok := rawData["redirect_uris"].([]any); ok {
 				client.RedirectURIs = make([]string, len(uris))
 				for i, uri := range uris {
 					client.RedirectURIs[i] = uri.(string)
@@ -147,7 +148,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			expectStatus: http.StatusCreated,
 			checkResponse: func(t *testing.T, body []byte) {
 				// Parse as raw JSON to verify exact field names
-				var rawResp map[string]interface{}
+				var rawResp map[string]any
 				if err := json.Unmarshal(body, &rawResp); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
@@ -249,7 +250,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			isFunnel:     true,
 			expectStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -267,7 +268,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			body:         `{"client_name": "Test Client"}`,
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -285,7 +286,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			body:         `{"redirect_uris": []}`,
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -303,7 +304,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			body:         `{invalid json}`,
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -320,7 +321,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			method:       "GET",
 			expectStatus: http.StatusMethodNotAllowed,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -445,12 +446,7 @@ func TestRedirectURIValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a helper function that matches the validation logic
 			isValidRedirectURI := func(clientURIs []string, requestURI string) bool {
-				for _, uri := range clientURIs {
-					if requestURI == uri {
-						return true
-					}
-				}
-				return false
+				return slices.Contains(clientURIs, requestURI)
 			}
 
 			validRedirect := isValidRedirectURI(tt.clientURIs, tt.requestURI)

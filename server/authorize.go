@@ -157,14 +157,7 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	supportedScopes := openIDSupportedScopes.AsSlice()
 
 	for _, scope := range requestedScopes {
-		supported := false
-		for _, supportedScope := range supportedScopes {
-			if scope == supportedScope {
-				supported = true
-				break
-			}
-		}
-		if !supported {
+		if supported := slices.Contains(supportedScopes, scope); !supported {
 			return nil, fmt.Errorf("unsupported scope: %q", scope)
 		}
 		validatedScopes = append(validatedScopes, scope)

@@ -397,8 +397,8 @@ func splitRedirectURIs(uris string) []string {
 	}
 
 	var result []string
-	lines := strings.Split(uris, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(uris, "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			result = append(result, line)

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -278,14 +279,7 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 		// Ensure requested resources are subset of original grant
 		if len(ar.Resources) > 0 {
 			for _, requested := range validatedResources {
-				found := false
-				for _, allowed := range ar.Resources {
-					if requested == allowed {
-						found = true
-						break
-					}
-				}
-				if !found {
+				if found := slices.Contains(ar.Resources, requested); !found {
 					writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "requested resource not in original grant", nil)
 					return
 				}
@@ -486,7 +480,7 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 
 	// Return RFC 8693 compliant response
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
+	response := map[string]any{
 		"access_token":      newAccessToken,
 		"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
 		"token_type":        "Bearer",
@@ -528,14 +522,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		// For exchanged tokens, use the audiences directly
 		audience = jwt.Audience(ar.Audiences)
 		// Also include the original client if not already in audiences
-		hasOriginal := false
-		for _, aud := range ar.Audiences {
-			if aud == ar.OriginalClientID {
-				hasOriginal = true
-				break
-			}
-		}
-		if !hasOriginal && ar.OriginalClientID != "" {
+		if hasOriginal := slices.Contains(ar.Audiences, ar.OriginalClientID); !hasOriginal && ar.OriginalClientID != "" {
 			audience = append(audience, ar.OriginalClientID)
 		}
 	} else {

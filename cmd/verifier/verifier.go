@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -411,7 +412,7 @@ func registerDynamicClient(ctx context.Context, registrationURL string) (*Client
 		return nil, fmt.Errorf("provider does not support dynamic client registration (no registration_endpoint)")
 	}
 
-	regReq := map[string]interface{}{
+	regReq := map[string]any{
 		"client_name":                "OIDC Verifier Tool (Manual)",
 		"redirect_uris":              []string{redirectURI},
 		"response_types":             []string{"code"},
@@ -542,7 +543,7 @@ func verifyIDToken(ctx context.Context, rawToken string, meta *ProviderMetadata,
 	switch aud := claims["aud"].(type) {
 	case string:
 		audMatch = (aud == clientID)
-	case []interface{}:
+	case []any:
 		for _, a := range aud {
 			if audStr, ok := a.(string); ok && audStr == clientID {
 				audMatch = true
@@ -711,7 +712,7 @@ func generateCodeChallenge(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 }
 
-func prettyPrint(v interface{}) string {
+func prettyPrint(v any) string {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("Error pretty printing: %v", err)
@@ -720,7 +721,7 @@ func prettyPrint(v interface{}) string {
 }
 
 func prettyPrintJSON(jsonStr string) string {
-	var v interface{}
+	var v any
 	if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
 		return jsonStr // Not valid JSON, return as is
 	}
@@ -773,14 +774,7 @@ func performTokenExchange(ctx context.Context, subjectToken string) (*STSTokenRe
 func validateScopes(returnedScope string, requiredScopes []string) bool {
 	returnedScopes := strings.Fields(returnedScope)
 	for _, required := range requiredScopes {
-		found := false
-		for _, returned := range returnedScopes {
-			if returned == required {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if found := slices.Contains(returnedScopes, required); !found {
 			return false
 		}
 	}

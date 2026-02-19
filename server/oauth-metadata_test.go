@@ -70,7 +70,7 @@ func TestMetadataEndpoints(t *testing.T) {
 				t.Errorf("expected status 200, got %d", rr.Code)
 			}
 
-			var metadata map[string]interface{}
+			var metadata map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &metadata); err != nil {
 				t.Fatalf("failed to unmarshal metadata: %v", err)
 			}
@@ -129,13 +129,13 @@ func TestOAuthMetadataRefreshTokenSupport(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	var metadata map[string]interface{}
+	var metadata map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &metadata); err != nil {
 		t.Fatalf("failed to unmarshal metadata: %v", err)
 	}
 
 	// Check that refresh_token is in grant_types_supported
-	grantTypes, ok := metadata["grant_types_supported"].([]interface{})
+	grantTypes, ok := metadata["grant_types_supported"].([]any)
 	if !ok {
 		t.Fatal("grant_types_supported not found or wrong type")
 	}
@@ -162,13 +162,13 @@ func TestPKCEMetadata(t *testing.T) {
 	tests := []struct {
 		name     string
 		endpoint string
-		checkFn  func(t *testing.T, metadata map[string]interface{})
+		checkFn  func(t *testing.T, metadata map[string]any)
 	}{
 		{
 			name:     "OpenID Connect metadata",
 			endpoint: "/.well-known/openid-configuration",
-			checkFn: func(t *testing.T, metadata map[string]interface{}) {
-				methods, ok := metadata["code_challenge_methods_supported"].([]interface{})
+			checkFn: func(t *testing.T, metadata map[string]any) {
+				methods, ok := metadata["code_challenge_methods_supported"].([]any)
 				if !ok {
 					t.Fatal("code_challenge_methods_supported not found or wrong type")
 				}
@@ -195,8 +195,8 @@ func TestPKCEMetadata(t *testing.T) {
 		{
 			name:     "OAuth 2.0 metadata",
 			endpoint: "/.well-known/oauth-authorization-server",
-			checkFn: func(t *testing.T, metadata map[string]interface{}) {
-				methods, ok := metadata["code_challenge_methods_supported"].([]interface{})
+			checkFn: func(t *testing.T, metadata map[string]any) {
+				methods, ok := metadata["code_challenge_methods_supported"].([]any)
 				if !ok {
 					t.Fatal("code_challenge_methods_supported not found or wrong type")
 				}
@@ -234,7 +234,7 @@ func TestPKCEMetadata(t *testing.T) {
 				t.Fatalf("expected status 200, got %d", rr.Code)
 			}
 
-			var metadata map[string]interface{}
+			var metadata map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &metadata); err != nil {
 				t.Fatalf("failed to unmarshal metadata: %v", err)
 			}
@@ -281,13 +281,13 @@ func TestMetadataSTSSupport(t *testing.T) {
 				t.Errorf("expected status 200, got %d", rr.Code)
 			}
 
-			var metadata map[string]interface{}
+			var metadata map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &metadata); err != nil {
 				t.Fatalf("failed to unmarshal metadata: %v", err)
 			}
 
 			// Check grant_types_supported
-			grantTypes, ok := metadata["grant_types_supported"].([]interface{})
+			grantTypes, ok := metadata["grant_types_supported"].([]any)
 			if !ok {
 				t.Fatal("grant_types_supported not found or wrong type")
 			}
@@ -334,13 +334,13 @@ func TestJWKSEndpoint(t *testing.T) {
 	}
 
 	// Parse JWKS response
-	var jwks map[string]interface{}
+	var jwks map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &jwks); err != nil {
 		t.Fatalf("failed to unmarshal JWKS: %v", err)
 	}
 
 	// Check that keys array exists
-	keys, ok := jwks["keys"].([]interface{})
+	keys, ok := jwks["keys"].([]any)
 	if !ok {
 		t.Fatal("keys not found in JWKS or wrong type")
 	}
@@ -351,7 +351,7 @@ func TestJWKSEndpoint(t *testing.T) {
 
 	// Check the key has required fields
 	if len(keys) > 0 {
-		key, ok := keys[0].(map[string]interface{})
+		key, ok := keys[0].(map[string]any)
 		if !ok {
 			t.Fatal("key is not a map")
 		}
