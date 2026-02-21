@@ -52,7 +52,7 @@ Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to c
 > [!NOTE]
 > If you're running tsidp for the first time it may take a few minutes for the TLS certificate to generate. You may not be able to access the service until the certificate is ready.
 
-> [!NOTE] Using OAuth Client Secrets
+> [!NOTE]
 > As an alternative to traditional auth keys, you can use OAuth client secrets for authentication by passing them through `TS_AUTHKEY`.
 >
 > When using OAuth client secrets:
@@ -182,7 +182,8 @@ These environment variables are used when tsidp does not have any state informat
 
 The Docker image exposes the CLI flags through environment variables. If omitted the default values for the CLI flags will be used.
 
-> [!NOTE] > `TS_STATE_DIR` and `TS_HOSTNAME` are legacy names. These will be replaced by `TSIDP_STATE_DIR` and `TSIDP_HOSTNAME` in the future.
+> [!NOTE]
+> `TS_STATE_DIR` and `TS_HOSTNAME` are legacy names. These will be replaced by `TSIDP_STATE_DIR` and `TSIDP_HOSTNAME` in the future.
 
 | Environment Variable                     | CLI flag                   |
 | ---------------------------------------- | -------------------------- |
