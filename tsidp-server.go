@@ -35,6 +35,9 @@ import (
 	"tailscale.com/version"
 )
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 // Command line flags
 var (
 	flagPort               = flag.Int("port", envIntOr("TSIDP_PORT", 443), "port to listen on")
@@ -56,6 +59,11 @@ var (
 // main initializes and starts the tsidp server
 func main() {
 	ctx := context.Background()
+
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	flag.Parse()
 	switch *flagLogLevel {
