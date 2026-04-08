@@ -30,16 +30,16 @@
             <div class="form-group">
                 <label>Client ID</label>
                 <div class="secret-field">
-                    <input type="text" value="{{.ID}}" readonly class="secret-input" id="client-id">
-                    <button type="button" onclick="copyClientId(event)" class="btn btn-secondary btn-small">Copy</button>
+                    <input type="text" value="{{.ID}}" readonly class="secret-input" aria-label="Client ID">
+                    <button type="button" onclick="copyValue(this.previousElementSibling, this)" class="btn btn-secondary btn-small">Copy</button>
                 </div>
             </div>
 
             <div class="form-group">
                 <label>Client Secret</label>
                 <div class="secret-field">
-                    <input type="text" value="{{.Secret}}" readonly class="secret-input" id="client-secret">
-                    <button type="button" onclick="copySecret(event)" class="btn btn-secondary btn-small">Copy</button>
+                    <input type="text" value="{{.Secret}}" readonly class="secret-input" aria-label="Client Secret">
+                    <button type="button" onclick="copyValue(this.previousElementSibling, this)" class="btn btn-secondary btn-small">Copy</button>
                 </div>
             </div>
         </div>
@@ -50,8 +50,8 @@
             <h3>New Client Secret</h3>
             <p class="warning">⚠️ Save this secret now! It will not be shown again.</p>
             <div class="secret-field">
-                <input type="text" value="{{.Secret}}" readonly class="secret-input" id="client-secret">
-                <button type="button" onclick="copySecret(event)" class="btn btn-secondary btn-small">Copy</button>
+                <input type="text" value="{{.Secret}}" readonly class="secret-input" aria-label="Client Secret">
+                <button type="button" onclick="copyValue(this.previousElementSibling, this)" class="btn btn-secondary btn-small">Copy</button>
             </div>
         </div>
         {{end}}
@@ -142,13 +142,11 @@
 </main>
 
 <script>
-    function copySecret(event) {
-        const secretInput = document.getElementById('client-secret');
-        secretInput.select();
-        secretInput.setSelectionRange(0, 99999); // For mobile devices
+    function copyValue(input, button) {
+        input.select();
+        input.setSelectionRange(0, 99999); // For mobile devices
 
-        navigator.clipboard.writeText(secretInput.value).then(function () {
-            const button = event.target;
+        navigator.clipboard.writeText(input.value).then(function () {
             const originalText = button.textContent;
             button.textContent = 'Copied!';
             button.classList.add('btn-success');
@@ -157,29 +155,7 @@
                 button.textContent = originalText;
                 button.classList.remove('btn-success');
             }, 2000);
-        }).catch(function (err) {
-            console.error('Failed to copy: ', err);
-            alert('Failed to copy to clipboard. Please copy manually.');
-        });
-    }
-
-    function copyClientId(event) {
-        const clientIdInput = document.getElementById('client-id');
-        clientIdInput.select();
-        clientIdInput.setSelectionRange(0, 99999); // For mobile devices
-
-        navigator.clipboard.writeText(clientIdInput.value).then(function () {
-            const button = event.target;
-            const originalText = button.textContent;
-            button.textContent = 'Copied!';
-            button.classList.add('btn-success');
-
-            setTimeout(function () {
-                button.textContent = originalText;
-                button.classList.remove('btn-success');
-            }, 2000);
-        }).catch(function (err) {
-            console.error('Failed to copy: ', err);
+        }).catch(function () {
             alert('Failed to copy to clipboard. Please copy manually.');
         });
     }
