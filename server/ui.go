@@ -18,6 +18,9 @@ import (
 	"tailscale.com/util/rands"
 )
 
+//go:embed ui-base.html
+var baseHTML string
+
 //go:embed ui-header.html
 var headerHTML string
 
@@ -34,9 +37,27 @@ var tmplFuncs = template.FuncMap{
 	"joinRedirectURIs": joinRedirectURIs,
 }
 
-var headerTmpl = template.Must(template.New("header").Funcs(tmplFuncs).Parse(headerHTML))
-var listTmpl = template.Must(headerTmpl.New("list").Parse(listHTML))
-var editTmpl = template.Must(headerTmpl.New("edit").Parse(editHTML))
+var (
+	listTmpl *template.Template
+	editTmpl *template.Template
+)
+
+func init() {
+	// Each page gets its own template set so their {{define "content"}} blocks
+	// don't collide in a shared set.
+	newBase := func() *template.Template {
+		t := template.Must(template.New("base").Funcs(tmplFuncs).Parse(baseHTML))
+		template.Must(t.New("header").Parse(headerHTML))
+		return t
+	}
+	l := newBase()
+	template.Must(l.New("list").Parse(listHTML))
+	listTmpl = l
+
+	e := newBase()
+	template.Must(e.New("edit").Parse(editHTML))
+	editTmpl = e
+}
 
 var processStart = time.Now()
 
@@ -101,12 +122,19 @@ func (s *IDPServer) handleClientsList(w http.ResponseWriter, r *http.Request) {
 		return clients[i].ID < clients[j].ID
 	})
 
+	data := listPageData{
+		Clients: clients,
+	}
+
 	var buf bytes.Buffer
-	if err := listTmpl.Execute(&buf, clients); err != nil {
+	if err := listTmpl.ExecuteTemplate(&buf, "base", data); err != nil {
 		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render client list", err)
 		return
 	}
-	buf.WriteTo(w)
+
+	if _, err := buf.WriteTo(w); err != nil {
+		slog.Error("failed to write client list response", slog.Any("error", err))
+	}
 }
 
 // handleNewClient handles creating a new OAuth/OIDC client
@@ -319,7 +347,7 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 	writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "Method not allowed", nil)
 }
 
-// clientDisplayData holds data for rendering client forms and lists
+// clientDisplayData holds data for rendering client forms
 // Migrated from legacy/ui.go:321-331
 type clientDisplayData struct {
 	ID           string
@@ -333,13 +361,19 @@ type clientDisplayData struct {
 	Error        string
 }
 
+// listPageData holds data for rendering the clients list page
+type listPageData struct {
+	Clients []clientDisplayData
+}
+
 // renderClientForm renders the client edit/create form
 // Migrated from legacy/ui.go:333-342
 func (s *IDPServer) renderClientForm(w http.ResponseWriter, data clientDisplayData) error {
 	var buf bytes.Buffer
-	if err := editTmpl.Execute(&buf, data); err != nil {
+	if err := editTmpl.ExecuteTemplate(&buf, "base", data); err != nil {
 		return err
 	}
+
 	if _, err := buf.WriteTo(w); err != nil {
 		return err
 	}
