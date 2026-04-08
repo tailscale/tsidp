@@ -52,6 +52,8 @@ var (
 	// extended debugging information
 	flagDebugAllRequests = flag.Bool("debug-all-requests", envknob.Bool("TSIDP_DEBUG_ALL_REQUESTS"), "capture and print all HTTP requests and responses")
 	flagDebugTSNet       = flag.Bool("debug-tsnet", envknob.Bool("TSIDP_DEBUG_TSNET"), "enable tsnet.Server logging")
+
+	flagVersion = flag.Bool("version", false, "print version and exit")
 )
 
 // main initializes and starts the tsidp server
@@ -59,6 +61,10 @@ func main() {
 	ctx := context.Background()
 
 	flag.Parse()
+	if *flagVersion {
+		fmt.Println(server.GetVersion())
+		os.Exit(0)
+	}
 	switch *flagLogLevel {
 	case "debug":
 		slog.SetLogLoggerLevel(slog.LevelDebug)

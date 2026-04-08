@@ -51,3 +51,15 @@ jobs:
           args: ${{ steps.goreleaser-args.outputs.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      -
+        name: Verify --version flag
+        run: |
+          BINARY=$(find dist -path '*linux*amd64*' -name 'tsidp' -type f | head -1)
+          [ -n "$BINARY" ] || { echo "ERROR: could not find linux/amd64 binary in dist/"; exit 1; }
+          VERSION=$("$BINARY" --version)
+          echo "Version: $VERSION"
+          [ -n "$VERSION" ] || { echo "ERROR: --version produced empty output"; exit 1; }
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
+            EXPECTED="${GITHUB_REF_NAME}"
+            [ "$VERSION" = "$EXPECTED" ] || { echo "ERROR: expected $EXPECTED got $VERSION"; exit 1; }
+          fi

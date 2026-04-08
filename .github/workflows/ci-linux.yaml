@@ -38,3 +38,10 @@ jobs:
       run: |
         go build ./...
         go test -v ./...
+
+    - name: Verify --version flag
+      run: |
+        go build -o tsidp-server .
+        VERSION=$(./tsidp-server --version)
+        echo "Version: $VERSION"
+        [ -n "$VERSION" ] || { echo "ERROR: --version produced empty output"; exit 1; }
