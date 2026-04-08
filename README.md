@@ -53,13 +53,21 @@ Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to c
 > If you're running tsidp for the first time it may take a few minutes for the TLS certificate to generate. You may not be able to access the service until the certificate is ready.
 
 > [!NOTE]
-> As an alternative to traditional auth keys, you can use OAuth client secrets for authentication by passing them through `TS_AUTHKEY`.
+> **Using OAuth Client Secrets**
 >
-> When using OAuth client secrets:
-> - Pass the OAuth client secret through `TS_AUTHKEY` (same as regular auth keys)
-> - Specify advertise tags using `TS_ADVERTISE_TAGS`
-> - The OAuth client secret must start with `tskey-client-`
-> - The tags must be properly configured in your Tailscale ACL policy
+> As an alternative to traditional auth keys, you can use OAuth client secrets for automatic node registration.
+>
+> **Setup:**
+> 1. In the [Tailscale admin console](https://login.tailscale.com/admin/settings/oauth), create an OAuth client with **Auth Keys → Write** scope
+> 2. Ensure the advertise tag (e.g. `tag:tsidp`) is defined in your ACL `tagOwners`
+> 3. Set `TS_AUTHKEY` to your OAuth client secret (`tskey-client-...`)
+> 4. Set `TS_ADVERTISE_TAGS` (or `--advertise-tags`) — **required** when using OAuth client secrets
+>
+> ```yaml
+> environment:
+>   - TS_AUTHKEY=tskey-client-xxxxx
+>   - TS_ADVERTISE_TAGS=tag:tsidp
+> ```
 
 ### Other Ways to Build and Run
 
@@ -146,18 +154,19 @@ $ TAILSCALE_USE_WIP_CODE=1 TS_AUTHKEY={YOUR_TAILSCALE_AUTHKEY} TSNET_FORCE_LOGIN
 
 The `tsidp-server` is configured by several command-line flags:
 
-| Flag                    | Description                                                                                        | Default  |
-| ----------------------- | -------------------------------------------------------------------------------------------------- | -------- |
-| `-dir <path>`           | Directory path to save tsnet and tsidp state. Recommend to be set.                                 | `""`     |
-| `-hostname <hostname>`  | hostname on tailnet. Will become `<hostname>.your-tailnet.ts.net`                                  | `idp`    |
-| `-port <port>`          | Port to listen on                                                                                  | `443`    |
-| `-local-port <port>`    | Listen on `localhost:<port>`. Useful for testing                                                   | disabled |
-| `-use-local-tailscaled` | Use local tailscaled instead of tsnet                                                              | `false`  |
-| `-funnel`               | Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products | disabled |
-| `-enable-sts`           | Enable OAuth token exchange using RFC 8693                                                         | disabled |
-| `-log <level>`          | Set logging level: `debug`, `info`, `warn`, `error`                                                | `info`   |
-| `-debug-all-requests`   | For development. Prints all requests and responses                                                 | disabled |
-| `-debug-tsnet`          | For development. Enables debug level logging with tsnet connection                                 | disabled |
+| Flag                           | Description                                                                                        | Default  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- | -------- |
+| `-dir <path>`                  | Directory path to save tsnet and tsidp state. Recommend to be set.                                 | `""`     |
+| `-hostname <hostname>`         | hostname on tailnet. Will become `<hostname>.your-tailnet.ts.net`                                  | `idp`    |
+| `-port <port>`                 | Port to listen on                                                                                  | `443`    |
+| `-local-port <port>`           | Listen on `localhost:<port>`. Useful for testing                                                   | disabled |
+| `-use-local-tailscaled`        | Use local tailscaled instead of tsnet                                                              | `false`  |
+| `-funnel`                      | Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products | disabled |
+| `-enable-sts`                  | Enable OAuth token exchange using RFC 8693                                                         | disabled |
+| `-advertise-tags <tags>`       | Comma-separated advertise tags (e.g. `tag:tsidp`). Required when using OAuth client secrets        | `""`     |
+| `-log <level>`                 | Set logging level: `debug`, `info`, `warn`, `error`                                                | `info`   |
+| `-debug-all-requests`          | For development. Prints all requests and responses                                                 | disabled |
+| `-debug-tsnet`                 | For development. Enables debug level logging with tsnet connection                                 | disabled |
 
 ### CLI Environment Variables
 
@@ -197,7 +206,7 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 | `TSIDP_DEBUG_TSNET=1`                    | `-debug-tsnet`             |
 | `TSIDP_DEBUG_ALL_REQUESTS=1`             | `-debug-all-requests`      |
 | `TS_AUTHKEY=<key>`                       | _(env var only)_           |
-| `TS_ADVERTISE_TAGS=<tags>`               | _(env var only)_           |
+| `TS_ADVERTISE_TAGS=<tags>`               | `-advertise-tags <tags>`   |
 
 ## Application Configuration Guides (WIP)
 

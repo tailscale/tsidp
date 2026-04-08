@@ -44,6 +44,7 @@ var (
 	flagHostname           = flag.String("hostname", cmp.Or(envknob.String("TS_HOSTNAME"), "idp"), "tsnet hostname to use instead of idp")
 	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
+	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
 
 	// application logging levels
 	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
@@ -127,8 +128,8 @@ func main() {
 			Dir:      *flagDir,
 		}
 
-		if advertiseTags := os.Getenv("TS_ADVERTISE_TAGS"); advertiseTags != "" {
-			tags := strings.Split(advertiseTags, ",")
+		if *flagAdvertiseTags != "" {
+			tags := strings.Split(*flagAdvertiseTags, ",")
 			for i, tag := range tags {
 				tags[i] = strings.TrimSpace(tag)
 			}
