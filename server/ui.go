@@ -30,11 +30,15 @@ var listHTML string
 //go:embed ui-edit.html
 var editHTML string
 
+//go:embed ui-footer.html
+var footerHTML string
+
 //go:embed ui-style.css
 var styleCSS string
 
 var tmplFuncs = template.FuncMap{
 	"joinRedirectURIs": joinRedirectURIs,
+	"GetAppVersion":    GetVersion,
 }
 
 var (
@@ -48,6 +52,7 @@ func init() {
 	newBase := func() *template.Template {
 		t := template.Must(template.New("base").Funcs(tmplFuncs).Parse(baseHTML))
 		template.Must(t.New("header").Parse(headerHTML))
+		template.Must(t.New("footer").Parse(footerHTML))
 		return t
 	}
 	l := newBase()

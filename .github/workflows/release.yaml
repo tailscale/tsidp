@@ -60,6 +60,6 @@ jobs:
           echo "Version: $VERSION"
           [ -n "$VERSION" ] || { echo "ERROR: --version produced empty output"; exit 1; }
           if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
-            EXPECTED="${GITHUB_REF_NAME}"
+            EXPECTED="${GITHUB_REF_NAME#v}"
             [ "$VERSION" = "$EXPECTED" ] || { echo "ERROR: expected $EXPECTED got $VERSION"; exit 1; }
           fi
