@@ -244,6 +244,64 @@ func TestPKCEMetadata(t *testing.T) {
 	}
 }
 
+// TestTokenEndpointAuthMethods tests that token_endpoint_auth_methods_supported
+// is present in both discovery endpoints.
+func TestTokenEndpointAuthMethods(t *testing.T) {
+	s := &IDPServer{
+		serverURL:   "https://idp.test.ts.net",
+		loopbackURL: "http://localhost:8080",
+	}
+
+	tests := []struct {
+		name     string
+		endpoint string
+		serveFn  func(http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:     "OpenID Connect metadata",
+			endpoint: "/.well-known/openid-configuration",
+			serveFn:  s.serveOpenIDConfig,
+		},
+		{
+			name:     "OAuth 2.0 metadata",
+			endpoint: "/.well-known/oauth-authorization-server",
+			serveFn:  s.serveOAuthMetadata,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.endpoint, nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			rr := httptest.NewRecorder()
+			tt.serveFn(rr, req)
+
+			var metadata map[string]any
+			if err := json.Unmarshal(rr.Body.Bytes(), &metadata); err != nil {
+				t.Fatalf("failed to unmarshal metadata: %v", err)
+			}
+
+			methods, ok := metadata["token_endpoint_auth_methods_supported"].([]any)
+			if !ok {
+				t.Fatal("token_endpoint_auth_methods_supported not found or wrong type")
+			}
+
+			methodSet := make(map[string]bool)
+			for _, m := range methods {
+				if s, ok := m.(string); ok {
+					methodSet[s] = true
+				}
+			}
+			if !methodSet["client_secret_basic"] {
+				t.Error("expected client_secret_basic in token_endpoint_auth_methods_supported")
+			}
+			if !methodSet["client_secret_post"] {
+				t.Error("expected client_secret_post in token_endpoint_auth_methods_supported")
+			}
+		})
+	}
+}
+
 // TestMetadataSTSSupport tests that STS token exchange grant is properly advertised when enabled
 func TestMetadataSTSSupport(t *testing.T) {
 	tests := []struct {

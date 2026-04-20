@@ -14,20 +14,21 @@ import (
 
 // openIDProviderMetadata is a partial representation of OpenID Provider Metadata.
 type openIDProviderMetadata struct {
-	Issuer                           string              `json:"issuer"`
-	AuthorizationEndpoint            string              `json:"authorization_endpoint,omitempty"`
-	TokenEndpoint                    string              `json:"token_endpoint,omitempty"`
-	UserInfoEndpoint                 string              `json:"userinfo_endpoint,omitempty"`
-	IntrospectionEndpoint            string              `json:"introspection_endpoint,omitempty"`
-	RegistrationEndpoint             string              `json:"registration_endpoint,omitempty"`
-	JWKS_URI                         string              `json:"jwks_uri"`
-	ScopesSupported                  views.Slice[string] `json:"scopes_supported"`
-	ResponseTypesSupported           views.Slice[string] `json:"response_types_supported"`
-	SubjectTypesSupported            views.Slice[string] `json:"subject_types_supported"`
-	ClaimsSupported                  views.Slice[string] `json:"claims_supported"`
-	IDTokenSigningAlgValuesSupported views.Slice[string] `json:"id_token_signing_alg_values_supported"`
-	GrantTypesSupported              views.Slice[string] `json:"grant_types_supported,omitempty"`
-	CodeChallengeMethodsSupported    views.Slice[string] `json:"code_challenge_methods_supported,omitempty"`
+	Issuer                            string              `json:"issuer"`
+	AuthorizationEndpoint             string              `json:"authorization_endpoint,omitempty"`
+	TokenEndpoint                     string              `json:"token_endpoint,omitempty"`
+	UserInfoEndpoint                  string              `json:"userinfo_endpoint,omitempty"`
+	IntrospectionEndpoint             string              `json:"introspection_endpoint,omitempty"`
+	RegistrationEndpoint              string              `json:"registration_endpoint,omitempty"`
+	JWKS_URI                          string              `json:"jwks_uri"`
+	ScopesSupported                   views.Slice[string] `json:"scopes_supported"`
+	ResponseTypesSupported            views.Slice[string] `json:"response_types_supported"`
+	SubjectTypesSupported             views.Slice[string] `json:"subject_types_supported"`
+	ClaimsSupported                   views.Slice[string] `json:"claims_supported"`
+	IDTokenSigningAlgValuesSupported  views.Slice[string] `json:"id_token_signing_alg_values_supported"`
+	GrantTypesSupported               views.Slice[string] `json:"grant_types_supported,omitempty"`
+	TokenEndpointAuthMethodsSupported views.Slice[string] `json:"token_endpoint_auth_methods_supported,omitempty"`
+	CodeChallengeMethodsSupported     views.Slice[string] `json:"code_challenge_methods_supported,omitempty"`
 }
 
 // oauthAuthorizationServerMetadata is a representation of
@@ -95,18 +96,19 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 	je := json.NewEncoder(w)
 	je.SetIndent("", "  ")
 	metadata := openIDProviderMetadata{
-		AuthorizationEndpoint:            s.serverURL + "/authorize",
-		Issuer:                           s.serverURL,
-		JWKS_URI:                         s.serverURL + "/.well-known/jwks.json",
-		UserInfoEndpoint:                 s.serverURL + "/userinfo",
-		TokenEndpoint:                    s.serverURL + "/token",
-		IntrospectionEndpoint:            s.serverURL + "/introspect",
-		ScopesSupported:                  openIDSupportedScopes,
-		ResponseTypesSupported:           openIDSupportedReponseTypes,
-		SubjectTypesSupported:            openIDSupportedSubjectTypes,
-		ClaimsSupported:                  openIDSupportedClaims,
-		IDTokenSigningAlgValuesSupported: openIDSupportedSigningAlgos,
-		CodeChallengeMethodsSupported:    pkceCodeChallengeMethodsSupported,
+		AuthorizationEndpoint:             s.serverURL + "/authorize",
+		Issuer:                            s.serverURL,
+		JWKS_URI:                          s.serverURL + "/.well-known/jwks.json",
+		UserInfoEndpoint:                  s.serverURL + "/userinfo",
+		TokenEndpoint:                     s.serverURL + "/token",
+		IntrospectionEndpoint:             s.serverURL + "/introspect",
+		ScopesSupported:                   openIDSupportedScopes,
+		ResponseTypesSupported:            openIDSupportedReponseTypes,
+		SubjectTypesSupported:             openIDSupportedSubjectTypes,
+		ClaimsSupported:                   openIDSupportedClaims,
+		IDTokenSigningAlgValuesSupported:  openIDSupportedSigningAlgos,
+		CodeChallengeMethodsSupported:     pkceCodeChallengeMethodsSupported,
+		TokenEndpointAuthMethodsSupported: oauthSupportedTokenEndpointAuthMethods,
 	}
 
 	// Add grant types supported
