@@ -1,6 +1,6 @@
 module github.com/tailscale/tsidp
 
-go 1.26.3
+go 1.26.4
 
 require (
 	filippo.io/csrf v0.2.1
