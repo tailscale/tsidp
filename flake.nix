@@ -13,8 +13,8 @@
       systems,
     }:
     let
-      goVersion = "1.26.0";
-      goHash = "sha256-yRMqih9r0qpKrR10uCMdlSdJUEg6SVBlfubFbm6Bd5A=";
+      goVersion = "1.26.4";
+      goHash = "sha256-T2aKMvv8ETLmqIH7lowvHa2mMUkqM5IRc1+7JVpCYC0=";
       eachSystem =
         f:
         nixpkgs.lib.genAttrs (import systems) (
