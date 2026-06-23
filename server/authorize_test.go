@@ -55,11 +55,12 @@ func TestScopeHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &IDPServer{
-				serverURL:     "https://idp.test.ts.net",
-				code:          make(map[string]*AuthRequest),
-				accessToken:   make(map[string]*AuthRequest),
-				refreshToken:  make(map[string]*AuthRequest),
-				funnelClients: make(map[string]*FunnelClient),
+				serverURL:       "https://idp.test.ts.net",
+				code:            make(map[string]*AuthRequest),
+				accessToken:     make(map[string]*AuthRequest),
+				refreshToken:    make(map[string]*AuthRequest),
+				funnelClients:   make(map[string]*FunnelClient),
+				supportedScopes: openIDSupportedScopes,
 			}
 
 			// Set up funnel client
@@ -174,7 +175,7 @@ func TestScopeHandling(t *testing.T) {
 // TestValidateScopes tests the validateScopes function directly
 // This provides more focused unit testing of scope validation logic
 func TestValidateScopes(t *testing.T) {
-	s := &IDPServer{}
+	s := &IDPServer{supportedScopes: openIDSupportedScopes}
 
 	tests := []struct {
 		name           string

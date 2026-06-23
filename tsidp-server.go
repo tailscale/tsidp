@@ -45,6 +45,7 @@ var (
 	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
 	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
+	flagAdditionalScopes   = flag.String("additional-scopes", envknob.String("TSIDP_ADDITIONAL_SCOPES"), "space-separated string of additional user defined Oauth scopes in addition to the OpenID defaults (openid, email, profile)")
 
 	// application logging levels
 	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
@@ -198,6 +199,7 @@ func main() {
 		*flagUseLocalTailscaled,
 		*flagEnableSTS,
 	)
+	srv.SetAdditionalScopes(strings.Fields(*flagAdditionalScopes))
 
 	srv.SetServerURL(strings.TrimSuffix(st.Self.DNSName, "."), *flagPort)
 

@@ -596,6 +596,8 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		tsClaimsWithExtra["act"] = ar.ActorInfo
 	}
 
+	ar.Scopes = mergeScopeClaim(ar.Scopes, tsClaimsWithExtra["scope"])
+
 	// Create an OIDC token using this issuer's signer.
 	token, err := jwt.Signed(signer).Claims(tsClaimsWithExtra).CompactSerialize()
 	if err != nil {

@@ -159,7 +159,7 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	}
 
 	validatedScopes := make([]string, 0, len(requestedScopes))
-	supportedScopes := openIDSupportedScopes.AsSlice()
+	supportedScopes := s.supportedScopes.AsSlice()
 
 	for _, scope := range requestedScopes {
 		if supported := slices.Contains(supportedScopes, scope); !supported {
@@ -169,6 +169,36 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	}
 
 	return validatedScopes, nil
+}
+
+// mergeScopeClaim merges a JWT "scope" claim value (a space-delimited string or
+// a slice of scope strings) into existing scopes, de-duplicating and preserving order.
+func mergeScopeClaim(existing []string, raw any) []string {
+	var incoming []string
+	switch v := raw.(type) {
+	case string:
+		incoming = strings.Fields(v)
+	case []string:
+		incoming = v
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				incoming = append(incoming, s)
+			}
+		}
+	case nil:
+		incoming = make([]string, 0)
+	}
+	result := make([]string, 0, len(existing))
+	openIDScopes := openIDSupportedScopes.AsSlice()
+
+	for _, scope := range existing {
+		if slices.Contains(incoming, scope) || slices.Contains(openIDScopes, scope) {
+			result = append(result, scope)
+		}
+	}
+
+	return result
 }
 
 // redirectAuthError redirects to the client's redirect_uri with error parameters

@@ -33,6 +33,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/lazy"
+	"tailscale.com/types/views"
 	"tailscale.com/util/mak"
 )
 
@@ -59,6 +60,8 @@ type IDPServer struct {
 	accessToken   map[string]*AuthRequest  // keyed by random hex
 	refreshToken  map[string]*AuthRequest  // keyed by random hex
 	funnelClients map[string]*FunnelClient // keyed by client ID
+
+	supportedScopes views.Slice[string]
 
 	// for bypassing application capability checks for testing
 	// see issue #44
@@ -165,15 +168,16 @@ const (
 // New creates a new IDPServer instance
 func New(lc *local.Client, stateDir string, funnel, localTSMode, enableSTS bool) *IDPServer {
 	return &IDPServer{
-		lc:            lc,
-		stateDir:      stateDir,
-		funnel:        funnel,
-		localTSMode:   localTSMode,
-		enableSTS:     enableSTS,
-		code:          make(map[string]*AuthRequest),
-		accessToken:   make(map[string]*AuthRequest),
-		refreshToken:  make(map[string]*AuthRequest),
-		funnelClients: make(map[string]*FunnelClient),
+		lc:              lc,
+		stateDir:        stateDir,
+		funnel:          funnel,
+		localTSMode:     localTSMode,
+		enableSTS:       enableSTS,
+		code:            make(map[string]*AuthRequest),
+		accessToken:     make(map[string]*AuthRequest),
+		refreshToken:    make(map[string]*AuthRequest),
+		funnelClients:   make(map[string]*FunnelClient),
+		supportedScopes: openIDSupportedScopes,
 	}
 }
 
@@ -185,6 +189,10 @@ func (s *IDPServer) SetServerURL(hostname string, port int) {
 	} else {
 		s.serverURL = fmt.Sprintf("https://%s", hostname)
 	}
+}
+
+func (s *IDPServer) SetAdditionalScopes(additionalScopes []string) {
+	s.supportedScopes = mergeScopes(s.supportedScopes.AsSlice(), additionalScopes)
 }
 
 // ServerURL returns the server URL
