@@ -167,6 +167,7 @@ The `tsidp-server` is configured by several command-line flags:
 | `-log <level>`                 | Set logging level: `debug`, `info`, `warn`, `error`                                                | `info`   |
 | `-debug-all-requests`          | For development. Prints all requests and responses                                                 | disabled |
 | `-debug-tsnet`                 | For development. Enables debug level logging with tsnet connection                                 | disabled |
+| `-additional-scopes`           | Advertises additional scopes that are supported for the access token, space separated              | `""`     |
 
 ### CLI Environment Variables
 
@@ -207,6 +208,7 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 | `TSIDP_DEBUG_ALL_REQUESTS=1`             | `-debug-all-requests`      |
 | `TS_AUTHKEY=<key>`                       | _(env var only)_           |
 | `TS_ADVERTISE_TAGS=<tags>`               | `-advertise-tags <tags>`   |
+| `TSIDP_ADDITIONAL_SCOPES="<scopes>"`     | `-additional-scopes`       |
 
 ## Application Configuration Guides (WIP)
 
