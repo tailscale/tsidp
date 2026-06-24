@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -463,6 +464,29 @@ func TestMetadataCORSHeaders(t *testing.T) {
 
 			if accessControlAllowHeaders != "*" {
 				t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", accessControlAllowHeaders)
+			}
+		})
+	}
+}
+
+func TestMergeScopes(t *testing.T) {
+	tests := []struct {
+		name       string
+		existing   []string
+		additional []string
+		expected   []string
+	}{
+		{name: "with empty additional", existing: []string{"openid"}, additional: []string{}, expected: []string{"openid"}},
+		{name: "with empty string in additional", existing: []string{"openid"}, additional: []string{""}, expected: []string{"openid"}},
+		{name: "with duplicate in additional", existing: []string{"openid"}, additional: []string{"openid"}, expected: []string{"openid"}},
+		{name: "with additional", existing: []string{"openid"}, additional: []string{"email", "profile"}, expected: []string{"openid", "email", "profile"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mergeScopes(tt.existing, tt.additional)
+			if !slices.Equal(result.AsSlice(), tt.expected) {
+				t.Errorf("expected: %q, got: %q", tt.expected, result)
 			}
 		})
 	}

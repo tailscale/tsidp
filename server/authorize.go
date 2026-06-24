@@ -171,29 +171,30 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	return validatedScopes, nil
 }
 
-// mergeScopeClaim merges a JWT "scope" claim value (a space-delimited string or
-// a slice of scope strings) into existing scopes, de-duplicating and preserving order.
-func mergeScopeClaim(existing []string, raw any) []string {
-	var incoming []string
+// validateRequestedScopes checks requested scopes against a JWT "scope" claim value
+// (a space-delimited string or a slice of scope strings)
+// returning a de-duplicated slice of allowed scopes, preserving order.
+func validateRequestedScopes(requested []string, raw any) []string {
+	var allowed []string
 	switch v := raw.(type) {
 	case string:
-		incoming = strings.Fields(v)
+		allowed = strings.Fields(v)
 	case []string:
-		incoming = v
+		allowed = v
 	case []any:
 		for _, item := range v {
 			if s, ok := item.(string); ok {
-				incoming = append(incoming, s)
+				allowed = append(allowed, s)
 			}
 		}
 	case nil:
-		incoming = make([]string, 0)
+		allowed = make([]string, 0)
 	}
-	result := make([]string, 0, len(existing))
-	openIDScopes := openIDSupportedScopes.AsSlice()
+	result := make([]string, 0, len(requested))
+	allowed = append(allowed, openIDSupportedScopes.AsSlice()...)
 
-	for _, scope := range existing {
-		if slices.Contains(incoming, scope) || slices.Contains(openIDScopes, scope) {
+	for _, scope := range requested {
+		if slices.Contains(allowed, scope) && !slices.Contains(result, scope) {
 			result = append(result, scope)
 		}
 	}

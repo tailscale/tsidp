@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -238,6 +239,48 @@ func TestValidateScopes(t *testing.T) {
 				if i < len(tt.expectedScopes) && scope != tt.expectedScopes[i] {
 					t.Errorf("expected scope[%d] = %q, got %q", i, tt.expectedScopes[i], scope)
 				}
+			}
+		})
+	}
+}
+
+func TestValidateRequestedScopes(t *testing.T) {
+	tests := []struct {
+		name            string
+		requestedScopes []string
+		allowedScopes   []string
+		expectedOutput  []string
+	}{
+		{
+			name:            "standard oauth scopes",
+			requestedScopes: []string{"openid", "email", "profile"},
+			allowedScopes:   []string{},
+			expectedOutput:  []string{"openid", "email", "profile"},
+		},
+		{
+			name:            "additional not allowed scope",
+			requestedScopes: []string{"openid", "email", "profile", "admin"},
+			allowedScopes:   []string{},
+			expectedOutput:  []string{"openid", "email", "profile"},
+		},
+		{
+			name:            "additional allowed scope",
+			requestedScopes: []string{"openid", "email", "profile", "admin"},
+			allowedScopes:   []string{"admin"},
+			expectedOutput:  []string{"openid", "email", "profile", "admin"},
+		},
+		{
+			name:            "duplicate allowed scopes",
+			requestedScopes: []string{"openid", "openid", "openid"},
+			allowedScopes:   nil,
+			expectedOutput:  []string{"openid"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := validateRequestedScopes(tt.requestedScopes, tt.allowedScopes)
+			if !slices.Equal(result, tt.expectedOutput) {
+				t.Errorf("expected result: %q, got: %q", tt.expectedOutput, result)
 			}
 		})
 	}
