@@ -6,6 +6,8 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -106,6 +108,149 @@ func TestValidateRedirectURI(t *testing.T) {
 				t.Errorf("validateRedirectURI(%q) = %q, want %q", tt.uri, got, tt.want)
 			}
 		})
+	}
+}
+
+func newClientForm(t *testing.T, values url.Values) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest("POST", "/new", strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return req
+}
+
+func TestHandleNewClientPublic(t *testing.T) {
+	s := &IDPServer{
+		funnelClients: make(map[string]*FunnelClient),
+		stateDir:      t.TempDir(),
+	}
+
+	form := url.Values{
+		"name":                       {"Incus"},
+		"redirect_uris":              {"https://host.example.ts.net/oidc/callback"},
+		"token_endpoint_auth_method": {"none"},
+	}
+
+	rr := httptest.NewRecorder()
+	s.handleNewClient(rr, newClientForm(t, form))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if strings.Contains(rr.Body.String(), "Client Secret") {
+		t.Error("expected no Client Secret field in response for a public client")
+	}
+	if !strings.Contains(rr.Body.String(), "public client") {
+		t.Error("expected response to explain this is a public client")
+	}
+
+	if len(s.funnelClients) != 1 {
+		t.Fatalf("expected exactly one stored client, got %d", len(s.funnelClients))
+	}
+	for _, c := range s.funnelClients {
+		if c.Secret != "" {
+			t.Errorf("expected empty secret for public client, got %q", c.Secret)
+		}
+		if c.TokenEndpointAuthMethod != "none" {
+			t.Errorf("expected TokenEndpointAuthMethod %q, got %q", "none", c.TokenEndpointAuthMethod)
+		}
+	}
+}
+
+func TestHandleNewClientConfidentialDefault(t *testing.T) {
+	s := &IDPServer{
+		funnelClients: make(map[string]*FunnelClient),
+		stateDir:      t.TempDir(),
+	}
+
+	form := url.Values{
+		"name":          {"My App"},
+		"redirect_uris": {"https://example.com/callback"},
+		// token_endpoint_auth_method intentionally omitted
+	}
+
+	rr := httptest.NewRecorder()
+	s.handleNewClient(rr, newClientForm(t, form))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if !strings.Contains(rr.Body.String(), "Client Secret") {
+		t.Error("expected a Client Secret field in response for a confidential client")
+	}
+
+	if len(s.funnelClients) != 1 {
+		t.Fatalf("expected exactly one stored client, got %d", len(s.funnelClients))
+	}
+	for _, c := range s.funnelClients {
+		if c.Secret == "" {
+			t.Error("expected a non-empty secret for confidential client")
+		}
+		if c.TokenEndpointAuthMethod != "client_secret_basic" {
+			t.Errorf("expected TokenEndpointAuthMethod %q, got %q", "client_secret_basic", c.TokenEndpointAuthMethod)
+		}
+	}
+}
+
+func TestHandleEditClientPublicHidesRegenerate(t *testing.T) {
+	s := &IDPServer{
+		funnelClients: map[string]*FunnelClient{
+			"public-client": {
+				ID:                      "public-client",
+				Name:                    "Incus",
+				RedirectURIs:            []string{"https://host.example.ts.net/oidc/callback"},
+				TokenEndpointAuthMethod: "none",
+			},
+		},
+		stateDir: t.TempDir(),
+	}
+
+	req := httptest.NewRequest("GET", "/edit/public-client", nil)
+	rr := httptest.NewRecorder()
+	s.handleEditClient(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if strings.Contains(body, "Regenerate Secret") {
+		t.Error("expected no Regenerate Secret button for a public client")
+	}
+	if !strings.Contains(body, "Public (no secret, PKCE)") {
+		t.Error("expected the read-only auth method to say Public")
+	}
+}
+
+func TestHandleEditClientRegenerateSecretRejectedForPublicClient(t *testing.T) {
+	s := &IDPServer{
+		funnelClients: map[string]*FunnelClient{
+			"public-client": {
+				ID:                      "public-client",
+				Name:                    "Incus",
+				RedirectURIs:            []string{"https://host.example.ts.net/oidc/callback"},
+				TokenEndpointAuthMethod: "none",
+			},
+		},
+		stateDir: t.TempDir(),
+	}
+
+	form := url.Values{"action": {"regenerate_secret"}}
+	req := httptest.NewRequest("POST", "/edit/public-client", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rr := httptest.NewRecorder()
+	s.handleEditClient(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "have a secret to regenerate") {
+		t.Error("expected an error explaining public clients have no secret to regenerate")
+	}
+	if s.funnelClients["public-client"].Secret != "" {
+		t.Error("expected secret to remain empty after rejected regenerate attempt")
 	}
 }
 

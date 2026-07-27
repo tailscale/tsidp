@@ -112,10 +112,12 @@ func (s *IDPServer) handleClientsList(w http.ResponseWriter, r *http.Request) {
 	clients := make([]clientDisplayData, 0, len(s.funnelClients))
 	for _, c := range s.funnelClients {
 		clients = append(clients, clientDisplayData{
-			ID:           c.ID,
-			Name:         c.Name,
-			RedirectURIs: c.RedirectURIs,
-			HasSecret:    c.Secret != "",
+			ID:                      c.ID,
+			Name:                    c.Name,
+			RedirectURIs:            c.RedirectURIs,
+			HasSecret:               c.Secret != "",
+			TokenEndpointAuthMethod: c.TokenEndpointAuthMethod,
+			IsPublic:                c.TokenEndpointAuthMethod == "none",
 		})
 	}
 	s.mu.Unlock()
@@ -161,11 +163,13 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimSpace(r.FormValue("name"))
 		redirectURIsText := strings.TrimSpace(r.FormValue("redirect_uris"))
 		redirectURIs := splitRedirectURIs(redirectURIsText)
+		authMethodInput := r.FormValue("token_endpoint_auth_method")
 
 		baseData := clientDisplayData{
-			IsNew:        true,
-			Name:         name,
-			RedirectURIs: redirectURIs,
+			IsNew:                   true,
+			Name:                    name,
+			RedirectURIs:            redirectURIs,
+			TokenEndpointAuthMethod: authMethodInput,
 		}
 
 		if len(redirectURIs) == 0 {
@@ -180,13 +184,24 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Anything other than "none" is treated as confidential, matching
+		// how DCR defaults a missing/unrecognized value (clients.go:341-343).
+		authMethod := authMethodInput
+		if authMethod != "none" {
+			authMethod = "client_secret_basic"
+		}
+
 		clientID := rands.HexString(32)
-		clientSecret := rands.HexString(64)
+		var clientSecret string
+		if authMethod != "none" {
+			clientSecret = rands.HexString(64)
+		}
 		newClient := FunnelClient{
-			ID:           clientID,
-			Secret:       clientSecret,
-			Name:         name,
-			RedirectURIs: redirectURIs,
+			ID:                      clientID,
+			Secret:                  clientSecret,
+			Name:                    name,
+			RedirectURIs:            redirectURIs,
+			TokenEndpointAuthMethod: authMethod,
 		}
 
 		s.mu.Lock()
@@ -203,14 +218,21 @@ func (s *IDPServer) handleNewClient(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		successData := clientDisplayData{
-			ID:           clientID,
-			Name:         name,
-			RedirectURIs: redirectURIs,
-			Secret:       clientSecret,
-			IsNew:        true,
+		successMsg := "Client created successfully! Save the client secret - it won't be shown again."
+		if authMethod == "none" {
+			successMsg = "Public client created successfully!"
 		}
-		s.renderFormSuccess(w, r, successData, "Client created successfully! Save the client secret - it won't be shown again.")
+
+		successData := clientDisplayData{
+			ID:                      clientID,
+			Name:                    name,
+			RedirectURIs:            redirectURIs,
+			Secret:                  clientSecret,
+			TokenEndpointAuthMethod: authMethod,
+			IsPublic:                authMethod == "none",
+			IsNew:                   true,
+		}
+		s.renderFormSuccess(w, r, successData, successMsg)
 		return
 	}
 
@@ -237,11 +259,13 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		data := clientDisplayData{
-			ID:           client.ID,
-			Name:         client.Name,
-			RedirectURIs: client.RedirectURIs,
-			HasSecret:    client.Secret != "",
-			IsEdit:       true,
+			ID:                      client.ID,
+			Name:                    client.Name,
+			RedirectURIs:            client.RedirectURIs,
+			HasSecret:               client.Secret != "",
+			TokenEndpointAuthMethod: client.TokenEndpointAuthMethod,
+			IsPublic:                client.TokenEndpointAuthMethod == "none",
+			IsEdit:                  true,
 		}
 		if err := s.renderClientForm(w, data); err != nil {
 			writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to render form", err)
@@ -265,11 +289,13 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 				s.mu.Unlock()
 
 				baseData := clientDisplayData{
-					ID:           client.ID,
-					Name:         client.Name,
-					RedirectURIs: client.RedirectURIs,
-					HasSecret:    client.Secret != "",
-					IsEdit:       true,
+					ID:                      client.ID,
+					Name:                    client.Name,
+					RedirectURIs:            client.RedirectURIs,
+					HasSecret:               client.Secret != "",
+					TokenEndpointAuthMethod: client.TokenEndpointAuthMethod,
+					IsPublic:                client.TokenEndpointAuthMethod == "none",
+					IsEdit:                  true,
 				}
 				s.renderFormError(w, r, baseData, "Failed to delete client. Please try again.")
 				return
@@ -280,19 +306,28 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if action == "regenerate_secret" {
+			baseData := clientDisplayData{
+				ID:                      client.ID,
+				Name:                    client.Name,
+				RedirectURIs:            client.RedirectURIs,
+				HasSecret:               client.Secret != "",
+				TokenEndpointAuthMethod: client.TokenEndpointAuthMethod,
+				IsPublic:                client.TokenEndpointAuthMethod == "none",
+				IsEdit:                  true,
+			}
+
+			if client.TokenEndpointAuthMethod == "none" {
+				s.renderFormError(w, r, baseData, "Public clients don't have a secret to regenerate.")
+				return
+			}
+
 			newSecret := rands.HexString(64)
 			s.mu.Lock()
 			s.funnelClients[clientID].Secret = newSecret
 			err := s.storeFunnelClientsLocked()
 			s.mu.Unlock()
 
-			baseData := clientDisplayData{
-				ID:           client.ID,
-				Name:         client.Name,
-				RedirectURIs: client.RedirectURIs,
-				HasSecret:    true,
-				IsEdit:       true,
-			}
+			baseData.HasSecret = true
 
 			if err != nil {
 				slog.Error("client regen secret: could not write funnel clients db", slog.Any("error", err))
@@ -314,11 +349,13 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 		redirectURIsText := strings.TrimSpace(r.FormValue("redirect_uris"))
 		redirectURIs := splitRedirectURIs(redirectURIsText)
 		baseData := clientDisplayData{
-			ID:           client.ID,
-			Name:         name,
-			RedirectURIs: redirectURIs,
-			HasSecret:    client.Secret != "",
-			IsEdit:       true,
+			ID:                      client.ID,
+			Name:                    name,
+			RedirectURIs:            redirectURIs,
+			HasSecret:               client.Secret != "",
+			TokenEndpointAuthMethod: client.TokenEndpointAuthMethod,
+			IsPublic:                client.TokenEndpointAuthMethod == "none",
+			IsEdit:                  true,
 		}
 
 		if len(redirectURIs) == 0 {
@@ -355,15 +392,17 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 // clientDisplayData holds data for rendering client forms
 // Migrated from legacy/ui.go:321-331
 type clientDisplayData struct {
-	ID           string
-	Name         string
-	RedirectURIs []string
-	Secret       string
-	HasSecret    bool
-	IsNew        bool
-	IsEdit       bool
-	Success      string
-	Error        string
+	ID                      string
+	Name                    string
+	RedirectURIs            []string
+	Secret                  string
+	HasSecret               bool
+	TokenEndpointAuthMethod string
+	IsPublic                bool
+	IsNew                   bool
+	IsEdit                  bool
+	Success                 string
+	Error                   string
 }
 
 // listPageData holds data for rendering the clients list page
