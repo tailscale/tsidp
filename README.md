@@ -69,6 +69,26 @@ Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to c
 >   - TS_ADVERTISE_TAGS=tag:tsidp
 > ```
 
+> [!NOTE]
+> **Using Workload Identity Federation**
+>
+> On platforms that can issue OIDC ID tokens for workloads (AWS, Google Cloud, GitHub Actions, or any custom issuer), tsidp can register itself without any stored secret using [workload identity federation](https://tailscale.com/docs/features/workload-identity-federation).
+>
+> **Setup:**
+> 1. In the [Tailscale admin console](https://login.tailscale.com/admin/settings/trust-credentials), create a federated trust credential with **Auth Keys → Write** scope
+> 2. Ensure the advertise tag (e.g. `tag:tsidp`) is defined in your ACL `tagOwners`
+> 3. Set `TS_CLIENT_ID` to the trust credential's client ID, and either `TS_AUDIENCE` (automatic ID token discovery on supported platforms) or `TS_ID_TOKEN` (an ID token you obtained yourself)
+> 4. Set `TS_ADVERTISE_TAGS` (or `--advertise-tags`) — **required** when using workload identity federation
+>
+> Nodes registered this way are ephemeral by default; append `?ephemeral=false` to `TS_CLIENT_ID` so the tsidp node persists.
+>
+> ```yaml
+> environment:
+>   - TS_CLIENT_ID=tsclient-xxxxx?ephemeral=false
+>   - TS_AUDIENCE=my-configured-audience
+>   - TS_ADVERTISE_TAGS=tag:tsidp
+> ```
+
 ### Other Ways to Build and Run
 
 <details>
@@ -184,7 +204,10 @@ These environment variables are used when tsidp does not have any state informat
 > **Serverless/Stateless Deployment**: tsidp requires persistent state storage to function properly in production. Without a persistent `-dir`, the service will re-register with Tailscale on every restart, lose dynamic OIDC client registrations, and invalidate user sessions. Serverless environments without persistent storage are not recommended for production use.
 
 - `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. Can be a traditional auth key or OAuth client secret (tskey-client-xxx). If omitted, a link will be printed to manually register.
-- `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets.
+- `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets or workload identity federation.
+- `TS_CLIENT_ID=<id>`: Client ID of a federated trust credential, used to register the node via [workload identity federation](https://tailscale.com/docs/features/workload-identity-federation) instead of `TS_AUTHKEY`. Use together with exactly one of `TS_ID_TOKEN` or `TS_AUDIENCE`. Nodes are ephemeral by default; append `?ephemeral=false` to keep the node registered.
+- `TS_ID_TOKEN=<jwt>`: OIDC ID token to exchange for an auth key when using workload identity federation.
+- `TS_AUDIENCE=<audience>`: Audience for automatic ID token discovery (AWS, Google Cloud, or GitHub Actions) when using workload identity federation.
 - `TSNET_FORCE_LOGIN=1`: Force re-login of the node. Useful during development.
 
 ### Docker Environment Variables

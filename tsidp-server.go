@@ -33,6 +33,10 @@ import (
 
 	"tailscale.com/tsnet"
 	"tailscale.com/version"
+
+	// Enable workload identity federation as an alternative to TS_AUTHKEY for
+	// registering the tsnet node (TS_CLIENT_ID plus TS_ID_TOKEN or TS_AUDIENCE).
+	_ "tailscale.com/feature/identityfederation"
 )
 
 // Command line flags
