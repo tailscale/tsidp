@@ -12,6 +12,7 @@ WORKDIR /app
 # BuildKit will set these automatically when using buildx
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
 
 # Copy go mod files from root
 COPY go.mod go.sum ./
@@ -22,7 +23,7 @@ COPY . ./
 
 # Build the binary for the target platform
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -a -installsuffix cgo -o tsidp-server .
+    go build -a -installsuffix cgo -ldflags "-s -w -X github.com/tailscale/tsidp/server.version=${VERSION}" -o tsidp-server .
 
 # Final stage
 FROM alpine:3.22

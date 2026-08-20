@@ -52,6 +52,7 @@ jobs:
           # For PRs to this file tag the container "pull_request_test"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "tags=ghcr.io/tailscale/tsidp:pull_request_test" >> $GITHUB_OUTPUT
+            echo "version=dev" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -59,11 +60,13 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             TAG="${REF#refs/tags/}"
             echo "tags=ghcr.io/tailscale/tsidp:${TAG},ghcr.io/tailscale/tsidp:latest" >> $GITHUB_OUTPUT
+            echo "version=${TAG#v}" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           # For workflow_dispatch: use the provided tag
           echo "tags=ghcr.io/tailscale/tsidp:${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # 3.11.1
@@ -77,3 +80,5 @@ jobs:
           push: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.push) }}
           tags: ${{ steps.image_tags.outputs.tags }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ steps.image_tags.outputs.version }}
