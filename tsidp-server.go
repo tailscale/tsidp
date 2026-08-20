@@ -45,6 +45,7 @@ var (
 	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
 	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
+	flagAuthKeyFile        = flag.String("authkey-file", envknob.String("TS_AUTHKEY_FILE"), "path to a file containing the Tailscale auth key (e.g. a Docker/Kubernetes secret); TS_AUTHKEY takes precedence if also set")
 
 	// application logging levels
 	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
@@ -89,6 +90,9 @@ func main() {
 		lns []net.Listener
 	)
 	if *flagUseLocalTailscaled {
+		if *flagAuthKeyFile != "" {
+			slog.Warn("authkey-file has no effect with -use-local-tailscaled", slog.String("path", *flagAuthKeyFile))
+		}
 		fmt.Println("")
 		fmt.Println("┌─[ IMPORTANT WARNING ]────────────────────────────────────────────────────┐")
 		fmt.Println("│                                                                          │")
@@ -141,6 +145,20 @@ func main() {
 		ts := &tsnet.Server{
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
+		}
+
+		if *flagAuthKeyFile != "" {
+			if v := cmp.Or(envknob.String("TS_AUTHKEY"), envknob.String("TS_AUTH_KEY")); v != "" {
+				slog.Warn("authkey-file ignored: TS_AUTHKEY/TS_AUTH_KEY takes precedence", slog.String("path", *flagAuthKeyFile))
+			} else {
+				key, err := readAuthKeyFile(*flagAuthKeyFile)
+				if err != nil {
+					slog.Error("could not read authkey file", slog.String("path", *flagAuthKeyFile), slog.Any("error", err))
+					os.Exit(1)
+				}
+				ts.AuthKey = key
+				slog.Info("using auth key from file", slog.String("path", *flagAuthKeyFile))
+			}
 		}
 
 		if *flagAdvertiseTags != "" {
@@ -376,4 +394,16 @@ func envIntOr(envVar string, implicitValue int) int {
 		return implicitValue
 	}
 	return val
+}
+
+func readAuthKeyFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	key := strings.TrimSpace(string(b))
+	if key == "" {
+		return "", fmt.Errorf("authkey file %q is empty", path)
+	}
+	return key, nil
 }
