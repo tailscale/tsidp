@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	filippo.io/csrf v0.2.1
 	gopkg.in/square/go-jose.v2 v2.6.0
-	tailscale.com v1.102.2
+	tailscale.com v1.102.3
 )
 
 require (
