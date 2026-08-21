@@ -17,6 +17,25 @@ import (
 	"tailscale.com/util/rands"
 )
 
+// lastForwardedForAddr returns the client address tsidp should trust from
+// X-Forwarded-For when running against a local tailscaled (localTSMode).
+// The last header is used since tailscaled is always the last proxy in this mode.
+func lastForwardedForAddr(r *http.Request) string {
+	xffValues := r.Header.Values("X-Forwarded-For")
+	if len(xffValues) == 0 {
+		return ""
+	}
+	// Split on commas defensively, in case a future tailscaled ever appends
+	// to an existing header instead of adding a new one.
+	segments := strings.Split(xffValues[len(xffValues)-1], ",")
+	for i := len(segments) - 1; i >= 0; i-- {
+		if addr := strings.TrimSpace(segments[i]); addr != "" {
+			return addr
+		}
+	}
+	return ""
+}
+
 // serveAuthorize handles the OAuth 2.0 authorization endpoint
 func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// This URL is visited by the user who is being authenticated. If they are
@@ -72,10 +91,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// Get user information
 	var remoteAddr string
 	if s.localTSMode {
-		xffValues := r.Header.Values("X-Forwarded-For")
-		if len(xffValues) > 0 {
-			remoteAddr = strings.TrimSpace(xffValues[len(xffValues)-1])
-		}
+		remoteAddr = lastForwardedForAddr(r)
 	} else {
 		remoteAddr = r.RemoteAddr
 	}

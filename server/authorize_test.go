@@ -733,3 +733,56 @@ func TestServeAuthorize(t *testing.T) {
 		})
 	}
 }
+
+func TestLastForwardedForAddr(t *testing.T) {
+	tests := []struct {
+		name string
+		xff  []string // one r.Header.Add call per entry, in order
+		want string
+	}{
+		{
+			name: "no header",
+			xff:  nil,
+			want: "",
+		},
+		{
+			name: "single header",
+			xff:  []string{"100.64.0.1"},
+			want: "100.64.0.1",
+		},
+		{
+			name: "single header with surrounding whitespace is trimmed",
+			xff:  []string{"  100.64.0.1  "},
+			want: "100.64.0.1",
+		},
+		{
+			name: "last header wins over client-supplied first header",
+			// a client could set its own header first, but tailscaled's own header is always last
+			xff:  []string{"100.64.0.99", "100.64.0.1"},
+			want: "100.64.0.1",
+		},
+		{
+			name: "comma-separated value in the last header uses the last segment",
+			xff:  []string{"100.64.0.0", "100.64.0.1, 100.64.0.2"},
+			want: "100.64.0.2",
+		},
+		{
+			name: "trailing comma falls back to the last non-empty segment",
+			xff:  []string{"100.64.0.1, 100.64.0.2,"},
+			want: "100.64.0.2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "/", nil)
+			for _, v := range tt.xff {
+				r.Header.Add("X-Forwarded-For", v)
+			}
+
+			if got := lastForwardedForAddr(r); got != tt.want {
+				t.Errorf("lastForwardedForAddr() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
