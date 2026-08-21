@@ -208,7 +208,7 @@ These environment variables are used when tsidp does not have any state informat
 > **Serverless/Stateless Deployment**: tsidp requires persistent state storage to function properly in production. Without a persistent `-dir`, the service will re-register with Tailscale on every restart, lose dynamic OIDC client registrations, and invalidate user sessions. Serverless environments without persistent storage are not recommended for production use.
 
 - `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. Can be a traditional auth key or OAuth client secret (tskey-client-xxx). If omitted, a link will be printed to manually register.
-- `TS_AUTHKEY_FILE=<path>` / `-authkey-file <path>`: Path to a file containing the auth key, for setups that mount the key as a file instead of an env var (e.g. Docker/Kubernetes secrets). If `TS_AUTHKEY` (or legacy `TS_AUTH_KEY`) is also set, that env var wins and the file is ignored (with a warning logged). Has no effect with `-use-local-tailscaled`, since that mode reuses an already-registered node.
+- `TS_AUTHKEY_FILE=<path>` / `-authkey-file <path>`: Same as `TS_AUTHKEY`, but reads the key from a file - useful when your key comes from a Docker/Kubernetes secret instead of an env var. Don't set this alongside `TS_AUTHKEY`; tsidp will refuse to start rather than guess which one you meant. If the file is missing, tsidp just logs a warning and carries on (it may already be registered from a previous boot). No effect with `-use-local-tailscaled`.
 - `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets.
 - `TSNET_FORCE_LOGIN=1`: Force re-login of the node. Useful during development.
 

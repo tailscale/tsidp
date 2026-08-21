@@ -45,7 +45,7 @@ var (
 	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
 	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
-	flagAuthKeyFile        = flag.String("authkey-file", envknob.String("TS_AUTHKEY_FILE"), "path to a file containing the Tailscale auth key (e.g. a Docker/Kubernetes secret); TS_AUTHKEY takes precedence if also set")
+	flagAuthKeyFile        = flag.String("authkey-file", envknob.String("TS_AUTHKEY_FILE"), "read the Tailscale auth key from this file instead of TS_AUTHKEY (e.g. for Docker/Kubernetes secrets); don't set both")
 
 	// application logging levels
 	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
@@ -148,15 +148,17 @@ func main() {
 		}
 
 		if *flagAuthKeyFile != "" {
-			if v := cmp.Or(envknob.String("TS_AUTHKEY"), envknob.String("TS_AUTH_KEY")); v != "" {
-				slog.Warn("authkey-file ignored: TS_AUTHKEY/TS_AUTH_KEY takes precedence", slog.String("path", *flagAuthKeyFile))
-			} else {
-				key, err := readAuthKeyFile(*flagAuthKeyFile)
-				if err != nil {
-					slog.Error("could not read authkey file", slog.String("path", *flagAuthKeyFile), slog.Any("error", err))
-					os.Exit(1)
-				}
-				ts.AuthKey = key
+			explicitKeySet := cmp.Or(envknob.String("TS_AUTHKEY"), envknob.String("TS_AUTH_KEY")) != ""
+			res := resolveAuthKeyFile(*flagAuthKeyFile, explicitKeySet)
+			if res.fatal != "" {
+				slog.Error(res.fatal, slog.String("path", *flagAuthKeyFile))
+				os.Exit(1)
+			}
+			if res.warn != "" {
+				slog.Warn(res.warn, slog.String("path", *flagAuthKeyFile))
+			}
+			if res.key != "" {
+				ts.AuthKey = res.key
 				slog.Info("using auth key from file", slog.String("path", *flagAuthKeyFile))
 			}
 		}
@@ -406,4 +408,29 @@ func readAuthKeyFile(path string) (string, error) {
 		return "", fmt.Errorf("authkey file %q is empty", path)
 	}
 	return key, nil
+}
+
+// authKeyFileResult is the outcome of resolveAuthKeyFile: at most one of
+// fatal, warn, or key is set.
+type authKeyFileResult struct {
+	key   string // resolved auth key, if any
+	warn  string // non-fatal message to log and continue
+	fatal string // message to log before exiting
+}
+
+// resolveAuthKeyFile decides what to do with -authkey-file given whether
+// TS_AUTHKEY/TS_AUTH_KEY is also set explicitly.
+func resolveAuthKeyFile(path string, explicitKeySet bool) authKeyFileResult {
+	if explicitKeySet {
+		return authKeyFileResult{fatal: "-authkey-file and TS_AUTHKEY/TS_AUTH_KEY are mutually exclusive; unset one"}
+	}
+	key, err := readAuthKeyFile(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return authKeyFileResult{warn: "authkey file not found, continuing without it (node may already be registered)"}
+	case err != nil:
+		return authKeyFileResult{fatal: fmt.Sprintf("could not read authkey file: %v", err)}
+	default:
+		return authKeyFileResult{key: key}
+	}
 }

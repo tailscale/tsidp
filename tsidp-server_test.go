@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,7 +43,54 @@ func TestReadAuthKeyFile(t *testing.T) {
 
 func TestReadAuthKeyFileMissing(t *testing.T) {
 	_, err := readAuthKeyFile(filepath.Join(t.TempDir(), "does-not-exist"))
-	if err == nil {
-		t.Fatal("expected error for missing file, got nil")
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected os.ErrNotExist, got %v", err)
+	}
+}
+
+func TestResolveAuthKeyFile(t *testing.T) {
+	t.Run("explicit key set", func(t *testing.T) {
+		// The path is never touched: explicitKeySet short-circuits before
+		// any file access, so it doesn't need to exist.
+		res := resolveAuthKeyFile("/should/not/be/read", true)
+		if res.fatal == "" || res.key != "" || res.warn != "" {
+			t.Fatalf("got %+v, want fatal set and key/warn empty", res)
+		}
+	})
+
+	t.Run("file missing", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "does-not-exist")
+
+		res := resolveAuthKeyFile(path, false)
+		if res.warn == "" || res.key != "" || res.fatal != "" {
+			t.Fatalf("got %+v, want warn set and key/fatal empty", res)
+		}
+	})
+
+	t.Run("file empty", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "authkey")
+		mustWriteFile(t, path, "")
+
+		res := resolveAuthKeyFile(path, false)
+		if res.fatal == "" || res.key != "" || res.warn != "" {
+			t.Fatalf("got %+v, want fatal set and key/warn empty", res)
+		}
+	})
+
+	t.Run("file valid", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "authkey")
+		mustWriteFile(t, path, "tskey-auth-file\n")
+
+		res := resolveAuthKeyFile(path, false)
+		if res.key != "tskey-auth-file" || res.warn != "" || res.fatal != "" {
+			t.Fatalf("got %+v, want key=%q and warn/fatal empty", res, "tskey-auth-file")
+		}
+	})
+}
+
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
