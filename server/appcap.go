@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/netip"
+	"strings"
 
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
@@ -80,7 +81,10 @@ func (s *IDPServer) addGrantAccessContext(handler http.HandlerFunc) http.Handler
 
 		var remoteAddr string
 		if s.localTSMode {
-			remoteAddr = r.Header.Get("X-Forwarded-For")
+			xffValues := r.Header.Values("X-Forwarded-For")
+			if len(xffValues) > 0 {
+				remoteAddr = strings.TrimSpace(xffValues[len(xffValues)-1])
+			}
 		} else {
 			remoteAddr = r.RemoteAddr
 		}

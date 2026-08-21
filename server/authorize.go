@@ -72,7 +72,10 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// Get user information
 	var remoteAddr string
 	if s.localTSMode {
-		remoteAddr = r.Header.Get("X-Forwarded-For")
+		xffValues := r.Header.Values("X-Forwarded-For")
+		if len(xffValues) > 0 {
+			remoteAddr = strings.TrimSpace(xffValues[len(xffValues)-1])
+		}
 	} else {
 		remoteAddr = r.RemoteAddr
 	}
