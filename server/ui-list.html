@@ -48,7 +48,9 @@
                 {{end}}
             </td>
             <td>
-                {{if .HasSecret}}
+                {{if .IsPublic}}
+                <span class="status-inactive">Public</span>
+                {{else if .HasSecret}}
                 <span class="status-active">Active</span>
                 {{else}}
                 <span class="status-inactive">No Secret</span>
