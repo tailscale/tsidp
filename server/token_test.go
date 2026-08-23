@@ -14,7 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/square/go-jose.v2/jwt"
+	jose "github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -50,7 +51,7 @@ func TestResourceIndicators(t *testing.T) {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
 				// Decode JWT to check audience
-				token, err := jwt.ParseSigned(resp.IDToken)
+				token, err := jwt.ParseSigned(resp.IDToken, []jose.SignatureAlgorithm{jose.RS256})
 				if err != nil {
 					t.Fatalf("failed to parse JWT: %v", err)
 				}
@@ -87,7 +88,7 @@ func TestResourceIndicators(t *testing.T) {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
 				// Decode JWT to check audience
-				token, err := jwt.ParseSigned(resp.IDToken)
+				token, err := jwt.ParseSigned(resp.IDToken, []jose.SignatureAlgorithm{jose.RS256})
 				if err != nil {
 					t.Fatalf("failed to parse JWT: %v", err)
 				}
@@ -1076,7 +1077,7 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 			}
 
 			// Parse the ID token
-			token, err := jwt.ParseSigned(tokenResp.IDToken)
+			token, err := jwt.ParseSigned(tokenResp.IDToken, []jose.SignatureAlgorithm{jose.RS256})
 			if err != nil {
 				t.Fatalf("failed to parse JWT: %v", err)
 			}
@@ -1092,14 +1093,20 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 				t.Fatal("aud claim not found")
 			}
 
-			// The JWT library always serializes audience as an array
-			audArray, isArray := aud.([]any)
-			if !isArray {
-				t.Errorf("expected audience to be array, got %T", aud)
+			// go-jose/v4 serializes a single-element audience as a string
+			// per RFC 7519, and multi-element as an array.
+			var audCount int
+			switch v := aud.(type) {
+			case string:
+				audCount = 1
+			case []any:
+				audCount = len(v)
+			default:
+				t.Fatalf("unexpected aud type %T", aud)
 			}
 
-			if len(audArray) != tt.expectedAudiences {
-				t.Errorf("expected %d audiences, got %d", tt.expectedAudiences, len(audArray))
+			if audCount != tt.expectedAudiences {
+				t.Errorf("expected %d audiences, got %d", tt.expectedAudiences, audCount)
 			}
 
 			// Check azp claim
@@ -1337,7 +1344,7 @@ func TestServeToken(t *testing.T) {
 				t.Fatalf("failed to unmarshal response: %v", err)
 			}
 
-			tok, err := jwt.ParseSigned(resp.IDToken)
+			tok, err := jwt.ParseSigned(resp.IDToken, []jose.SignatureAlgorithm{jose.RS256})
 			if err != nil {
 				t.Fatalf("failed to parse ID token: %v", err)
 			}
