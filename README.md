@@ -69,6 +69,30 @@ Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to c
 >   - TS_ADVERTISE_TAGS=tag:tsidp
 > ```
 
+> [!NOTE]
+> **Using Docker Secrets**
+>
+> Passing `TS_AUTHKEY` as a plain environment variable puts the key in `docker inspect` output and the container's process environment. To avoid that, mount the key as a [Docker secret](https://docs.docker.com/compose/how-tos/use-secrets/) and point tsidp at the mounted file with `TS_AUTHKEY_FILE` instead:
+>
+> ```yaml
+> services:
+>   tsidp:
+>     image: ghcr.io/tailscale/tsidp:latest
+>     environment:
+>       - TAILSCALE_USE_WIP_CODE=1
+>       - TS_STATE_DIR=/data
+>       - TS_AUTHKEY_FILE=/run/secrets/ts_authkey
+>     volumes:
+>       - tsidp-data:/data
+>     secrets:
+>       - ts_authkey
+> secrets:
+>   ts_authkey:
+>     file: ./ts_authkey.txt
+> volumes:
+>   tsidp-data:
+> ```
+
 ### Other Ways to Build and Run
 
 <details>
@@ -184,6 +208,7 @@ These environment variables are used when tsidp does not have any state informat
 > **Serverless/Stateless Deployment**: tsidp requires persistent state storage to function properly in production. Without a persistent `-dir`, the service will re-register with Tailscale on every restart, lose dynamic OIDC client registrations, and invalidate user sessions. Serverless environments without persistent storage are not recommended for production use.
 
 - `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. Can be a traditional auth key or OAuth client secret (tskey-client-xxx). If omitted, a link will be printed to manually register.
+- `TS_AUTHKEY_FILE=<path>` / `-authkey-file <path>`: Same as `TS_AUTHKEY`, but reads the key from a file - useful when your key comes from a Docker/Kubernetes secret instead of an env var. Don't set this alongside `TS_AUTHKEY`; tsidp will refuse to start rather than guess which one you meant. If the file is missing, tsidp just logs a warning and carries on (it may already be registered from a previous boot). No effect with `-use-local-tailscaled`.
 - `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets.
 - `TSNET_FORCE_LOGIN=1`: Force re-login of the node. Useful during development.
 
@@ -200,12 +225,14 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 | `TS_HOSTNAME=<hostname>` _\*note prefix_ | `-hostname <hostname>`     |
 | `TSIDP_PORT=<port>`                      | `-port <port>`             |
 | `TSIDP_LOCAL_PORT=<local-port>`          | `-local-port <local-port>` |
+| `TSIDP_USE_LOCAL_TAILSCALED=1`           | `-use-local-tailscaled`    |
 | `TSIDP_USE_FUNNEL=1`                     | `-funnel`                  |
 | `TSIDP_ENABLE_STS=1`                     | `-enable-sts`              |
 | `TSIDP_LOG=<level>`                      | `-log <level>`             |
 | `TSIDP_DEBUG_TSNET=1`                    | `-debug-tsnet`             |
 | `TSIDP_DEBUG_ALL_REQUESTS=1`             | `-debug-all-requests`      |
 | `TS_AUTHKEY=<key>`                       | _(env var only)_           |
+| `TS_AUTHKEY_FILE=<path>`                 | `-authkey-file <path>`     |
 | `TS_ADVERTISE_TAGS=<tags>`               | `-advertise-tags <tags>`   |
 
 ## Application Configuration Guides (WIP)

@@ -45,6 +45,7 @@ var (
 	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
 	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
 	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
+	flagAuthKeyFile        = flag.String("authkey-file", envknob.String("TS_AUTHKEY_FILE"), "read the Tailscale auth key from this file instead of TS_AUTHKEY (e.g. for Docker/Kubernetes secrets); don't set both")
 
 	// application logging levels
 	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
@@ -89,6 +90,9 @@ func main() {
 		lns []net.Listener
 	)
 	if *flagUseLocalTailscaled {
+		if *flagAuthKeyFile != "" {
+			slog.Warn("authkey-file has no effect with -use-local-tailscaled", slog.String("path", *flagAuthKeyFile))
+		}
 		fmt.Println("")
 		fmt.Println("┌─[ IMPORTANT WARNING ]────────────────────────────────────────────────────┐")
 		fmt.Println("│                                                                          │")
@@ -141,6 +145,24 @@ func main() {
 		ts := &tsnet.Server{
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
+		}
+
+		if *flagAuthKeyFile != "" {
+			if cmp.Or(envknob.String("TS_AUTHKEY"), envknob.String("TS_AUTH_KEY")) != "" {
+				slog.Error("-authkey-file and TS_AUTHKEY/TS_AUTH_KEY are mutually exclusive; unset one", slog.String("path", *flagAuthKeyFile))
+				os.Exit(1)
+			}
+			key, err := resolveAuthKeyFile(*flagAuthKeyFile)
+			if err != nil {
+				slog.Error("could not read authkey file", slog.String("path", *flagAuthKeyFile), slog.Any("error", err))
+				os.Exit(1)
+			}
+			if key == "" {
+				slog.Warn("authkey file not found, continuing without it (node may already be registered)", slog.String("path", *flagAuthKeyFile))
+			} else {
+				ts.AuthKey = key
+				slog.Info("using auth key from file", slog.String("path", *flagAuthKeyFile))
+			}
 		}
 
 		if *flagAdvertiseTags != "" {
@@ -376,4 +398,26 @@ func envIntOr(envVar string, implicitValue int) int {
 		return implicitValue
 	}
 	return val
+}
+
+func readAuthKeyFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	key := strings.TrimSpace(string(b))
+	if key == "" {
+		return "", fmt.Errorf("authkey file %q is empty", path)
+	}
+	return key, nil
+}
+
+// resolveAuthKeyFile is like readAuthKeyFile, but treats a missing file as
+// ("", nil) instead of an error, since the node may already be registered.
+func resolveAuthKeyFile(path string) (key string, err error) {
+	key, err = readAuthKeyFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	return key, err
 }
