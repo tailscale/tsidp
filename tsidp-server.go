@@ -148,17 +148,19 @@ func main() {
 		}
 
 		if *flagAuthKeyFile != "" {
-			explicitKeySet := cmp.Or(envknob.String("TS_AUTHKEY"), envknob.String("TS_AUTH_KEY")) != ""
-			res := resolveAuthKeyFile(*flagAuthKeyFile, explicitKeySet)
-			if res.fatal != "" {
-				slog.Error(res.fatal, slog.String("path", *flagAuthKeyFile))
+			if cmp.Or(envknob.String("TS_AUTHKEY"), envknob.String("TS_AUTH_KEY")) != "" {
+				slog.Error("-authkey-file and TS_AUTHKEY/TS_AUTH_KEY are mutually exclusive; unset one", slog.String("path", *flagAuthKeyFile))
 				os.Exit(1)
 			}
-			if res.warn != "" {
-				slog.Warn(res.warn, slog.String("path", *flagAuthKeyFile))
+			key, err := resolveAuthKeyFile(*flagAuthKeyFile)
+			if err != nil {
+				slog.Error("could not read authkey file", slog.String("path", *flagAuthKeyFile), slog.Any("error", err))
+				os.Exit(1)
 			}
-			if res.key != "" {
-				ts.AuthKey = res.key
+			if key == "" {
+				slog.Warn("authkey file not found, continuing without it (node may already be registered)", slog.String("path", *flagAuthKeyFile))
+			} else {
+				ts.AuthKey = key
 				slog.Info("using auth key from file", slog.String("path", *flagAuthKeyFile))
 			}
 		}
@@ -410,27 +412,12 @@ func readAuthKeyFile(path string) (string, error) {
 	return key, nil
 }
 
-// authKeyFileResult is the outcome of resolveAuthKeyFile: at most one of
-// fatal, warn, or key is set.
-type authKeyFileResult struct {
-	key   string // resolved auth key, if any
-	warn  string // non-fatal message to log and continue
-	fatal string // message to log before exiting
-}
-
-// resolveAuthKeyFile decides what to do with -authkey-file given whether
-// TS_AUTHKEY/TS_AUTH_KEY is also set explicitly.
-func resolveAuthKeyFile(path string, explicitKeySet bool) authKeyFileResult {
-	if explicitKeySet {
-		return authKeyFileResult{fatal: "-authkey-file and TS_AUTHKEY/TS_AUTH_KEY are mutually exclusive; unset one"}
+// resolveAuthKeyFile is like readAuthKeyFile, but treats a missing file as
+// ("", nil) instead of an error, since the node may already be registered.
+func resolveAuthKeyFile(path string) (key string, err error) {
+	key, err = readAuthKeyFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
 	}
-	key, err := readAuthKeyFile(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return authKeyFileResult{warn: "authkey file not found, continuing without it (node may already be registered)"}
-	case err != nil:
-		return authKeyFileResult{fatal: fmt.Sprintf("could not read authkey file: %v", err)}
-	default:
-		return authKeyFileResult{key: key}
-	}
+	return key, err
 }
