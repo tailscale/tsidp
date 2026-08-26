@@ -21,7 +21,6 @@ import (
 )
 
 // TestResourceIndicators tests RFC 8707 resource indicators support
-// Migrated from legacy/tsidp_test.go:2468-2652
 func TestResourceIndicators(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -55,11 +54,11 @@ func TestResourceIndicators(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to parse JWT: %v", err)
 				}
-				var claims map[string]interface{}
+				var claims map[string]any
 				if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 					t.Fatalf("failed to get claims: %v", err)
 				}
-				aud, ok := claims["aud"].([]interface{})
+				aud, ok := claims["aud"].([]any)
 				if !ok {
 					t.Fatalf("expected aud to be an array, got %T", claims["aud"])
 				}
@@ -92,11 +91,11 @@ func TestResourceIndicators(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to parse JWT: %v", err)
 				}
-				var claims map[string]interface{}
+				var claims map[string]any
 				if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 					t.Fatalf("failed to get claims: %v", err)
 				}
-				aud, ok := claims["aud"].([]interface{})
+				aud, ok := claims["aud"].([]any)
 				if !ok {
 					t.Fatalf("expected aud to be an array, got %T", claims["aud"])
 				}
@@ -219,7 +218,6 @@ func TestResourceIndicators(t *testing.T) {
 }
 
 // TestIntrospectTokenExpiration tests introspection of expired tokens
-// Migrated from legacy/tsidp_test.go:2332-2375
 func TestIntrospectTokenExpiration(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
@@ -260,7 +258,7 @@ func TestIntrospectTokenExpiration(t *testing.T) {
 	}
 
 	// Check response shows token as inactive
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -276,7 +274,6 @@ func TestIntrospectTokenExpiration(t *testing.T) {
 }
 
 // TestIntrospectWithResources tests introspection with resources
-// Migrated from legacy/tsidp_test.go:2377-2431
 func TestIntrospectWithResources(t *testing.T) {
 	s := &IDPServer{
 		serverURL:     "https://idp.test.ts.net",
@@ -328,7 +325,7 @@ func TestIntrospectWithResources(t *testing.T) {
 	}
 
 	// Check response shows token as active with resources in audience
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -338,7 +335,7 @@ func TestIntrospectWithResources(t *testing.T) {
 	}
 
 	// Check that resources are included in audience
-	if aud, ok := resp["aud"].([]interface{}); ok {
+	if aud, ok := resp["aud"].([]any); ok {
 		expectedAudiences := []string{"test-client", "https://api1.example.com", "https://api2.example.com"}
 		if len(aud) != len(expectedAudiences) {
 			t.Errorf("expected %d audience values, got %d", len(expectedAudiences), len(aud))
@@ -404,7 +401,7 @@ func TestIntrospectionRFC7662Compliance(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -460,7 +457,6 @@ func TestIntrospectionRFC7662Compliance(t *testing.T) {
 }
 
 // TestRefreshTokenFlow tests refresh token grant flow
-// Migrated from legacy/tsidp_test.go:1791-1940
 func TestRefreshTokenFlow(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -506,7 +502,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "",
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -524,7 +520,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "invalid-token",
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -542,7 +538,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 			refreshToken: "expired-token",
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -661,7 +657,6 @@ func TestRefreshTokenFlow(t *testing.T) {
 }
 
 // TestTokenEndpointUnsupportedGrantType tests unsupported grant type handling
-// Migrated from legacy/tsidp_test.go:1942-2003
 func TestTokenEndpointUnsupportedGrantType(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -712,7 +707,7 @@ func TestTokenEndpointUnsupportedGrantType(t *testing.T) {
 			}
 
 			// Check JSON error response per RFC 6749
-			var errResp map[string]interface{}
+			var errResp map[string]any
 			if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
 				t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
 			}
@@ -729,7 +724,6 @@ func TestTokenEndpointUnsupportedGrantType(t *testing.T) {
 }
 
 // TestTokenExpiration tests token expiration handling
-// Migrated from legacy/tsidp_test.go:2005-2069
 func TestTokenExpiration(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -807,7 +801,6 @@ func TestTokenExpiration(t *testing.T) {
 }
 
 // TestRefreshTokenWithResources tests refresh tokens with resource downscoping (RFC 8707)
-// Migrated from legacy/tsidp_test.go:1076-1187
 func TestRefreshTokenWithResources(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -918,7 +911,6 @@ func TestRefreshTokenWithResources(t *testing.T) {
 }
 
 // TestRefreshTokenScopePreservation tests scope preservation in refresh tokens
-// Migrated from legacy/tsidp_test.go:1460-1541
 func TestRefreshTokenScopePreservation(t *testing.T) {
 	s := New(nil, "", false, false, false)
 
@@ -999,7 +991,6 @@ func TestRefreshTokenScopePreservation(t *testing.T) {
 }
 
 // TestAZPClaimWithMultipleAudiences tests azp claim handling with multiple audiences
-// Migrated from legacy/tsidp_test.go:1543-1679
 func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -1090,7 +1081,7 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 				t.Fatalf("failed to parse JWT: %v", err)
 			}
 
-			var claims map[string]interface{}
+			var claims map[string]any
 			if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
 				t.Fatalf("failed to get claims: %v", err)
 			}
@@ -1102,7 +1093,7 @@ func TestAZPClaimWithMultipleAudiences(t *testing.T) {
 			}
 
 			// The JWT library always serializes audience as an array
-			audArray, isArray := aud.([]interface{})
+			audArray, isArray := aud.([]any)
 			if !isArray {
 				t.Errorf("expected audience to be array, got %T", aud)
 			}
@@ -1141,6 +1132,7 @@ func TestServeToken(t *testing.T) {
 	tests := []struct {
 		name           string
 		caps           tailcfg.PeerCapMap
+		tags           []string
 		method         string
 		grantType      string
 		code           string
@@ -1195,6 +1187,16 @@ func TestServeToken(t *testing.T) {
 			redirectURI: "https://rp.example.com/callback",
 			code:        "valid-code",
 			remoteAddr:  "192.168.0.1:12345",
+			expectError: true,
+		},
+		{
+			name:        "tagged nodes are not allowed",
+			method:      "POST",
+			grantType:   "authorization_code",
+			redirectURI: "https://rp.example.com/callback",
+			code:        "valid-code",
+			remoteAddr:  "192.168.0.1:12345",
+			tags:        []string{"tag:mytag"},
 			expectError: true,
 		},
 		{
@@ -1258,6 +1260,7 @@ func TestServeToken(t *testing.T) {
 				Key:      key.NodePublic{},
 				Cap:      1,
 				DiscoKey: key.DiscoPublic{},
+				Tags:     tt.tags,
 			}
 
 			remoteUser := &apitype.WhoIsResponse{

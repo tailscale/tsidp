@@ -17,6 +17,25 @@ import (
 	"tailscale.com/util/rands"
 )
 
+// lastForwardedForAddr returns the client address tsidp should trust from
+// X-Forwarded-For when running against a local tailscaled (localTSMode).
+// The last header is used since tailscaled is always the last proxy in this mode.
+func lastForwardedForAddr(r *http.Request) string {
+	xffValues := r.Header.Values("X-Forwarded-For")
+	if len(xffValues) == 0 {
+		return ""
+	}
+	// Split on commas defensively, in case a future tailscaled ever appends
+	// to an existing header instead of adding a new one.
+	segments := strings.Split(xffValues[len(xffValues)-1], ",")
+	for i := len(segments) - 1; i >= 0; i-- {
+		if addr := strings.TrimSpace(segments[i]); addr != "" {
+			return addr
+		}
+	}
+	return ""
+}
+
 // serveAuthorize handles the OAuth 2.0 authorization endpoint
 func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// This URL is visited by the user who is being authenticated. If they are
@@ -72,7 +91,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// Get user information
 	var remoteAddr string
 	if s.localTSMode {
-		remoteAddr = r.Header.Get("X-Forwarded-For")
+		remoteAddr = lastForwardedForAddr(r)
 	} else {
 		remoteAddr = r.RemoteAddr
 	}
@@ -83,6 +102,11 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	who, err = s.lc.WhoIs(r.Context(), remoteAddr)
 	if err != nil {
 		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to authenticate user with WhoIs", err)
+		return
+	}
+
+	if who.Node.View().IsTagged() {
+		redirectAuthError(w, r, redirectURI, ecAccessDenied, "tagged node doesn't have a user identity", state)
 		return
 	}
 
@@ -104,7 +128,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	// Validate scopes
 	validatedScopes, err := s.validateScopes(ar.Scopes)
 	if err != nil {
-		redirectAuthError(w, r, redirectURI, "invalid_scope", fmt.Sprintf("invalid scope: %v", err), state)
+		redirectAuthError(w, r, redirectURI, ecInvalidScope, fmt.Sprintf("invalid scope: %v", err), state)
 		return
 	}
 	ar.Scopes = validatedScopes
@@ -135,7 +159,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 	mak.Set(&s.code, code, ar)
 	s.mu.Unlock()
 
-	queryString := make(url.Values)
+	queryString := parsedURL.Query()
 	queryString.Set("code", code)
 	if state := uq.Get("state"); state != "" {
 		queryString.Set("state", state)
@@ -147,7 +171,6 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateScopes validates the requested OAuth scopes
-// Migrated from legacy/tsidp.go:399-423
 func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	if len(requestedScopes) == 0 {
 		// Default to openid scope if none specified
@@ -158,14 +181,7 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	supportedScopes := openIDSupportedScopes.AsSlice()
 
 	for _, scope := range requestedScopes {
-		supported := false
-		for _, supportedScope := range supportedScopes {
-			if scope == supportedScope {
-				supported = true
-				break
-			}
-		}
-		if !supported {
+		if supported := slices.Contains(supportedScopes, scope); !supported {
 			return nil, fmt.Errorf("unsupported scope: %q", scope)
 		}
 		validatedScopes = append(validatedScopes, scope)

@@ -1,83 +1,72 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Tailscale OIDC Identity Provider</title>
-    <link rel="stylesheet" type="text/css" href="/style.css" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  </head>
-
-  <body>
-    {{template "header"}}
-
-    <main>
-      <div class="header-actions">
+{{define "content"}}
+<main>
+    <div class="header-actions">
         <div>
-          <h2>OIDC Clients</h2>
-          {{if .}}
-            <p class="client-count">{{len .}} client{{if ne (len .) 1}}s{{end}} configured</p>
-          {{end}}
+            <h2>OIDC Clients</h2>
+            {{if .Clients}}
+            <p class="client-count">{{len .Clients}} client{{if ne (len .Clients) 1}}s{{end}} configured</p>
+            {{end}}
         </div>
         <a href="/new" class="btn btn-primary">Add New Client</a>
-      </div>
+    </div>
 
-      {{if .}}
-      <table>
+    {{if .Clients}}
+    <table>
         <thead>
-          <tr>
+        <tr>
             <td>Name</td>
             <td>Client ID</td>
             <td>Redirect URIs</td>
             <td>Status</td>
             <td>Actions</td>
-          </tr>
+        </tr>
         </thead>
         <tbody>
-          {{range .}}
-          <tr>
+        {{range .Clients}}
+        <tr>
             <td>
-              {{if .Name}}
+                {{if .Name}}
                 <strong>{{.Name}}</strong>
-              {{else}}
+                {{else}}
                 <span class="text-muted">Unnamed Client</span>
-              {{end}}
+                {{end}}
             </td>
             <td>
-              <code class="client-id">{{.ID}}</code>
+                <code class="client-id">{{.ID}}</code>
             </td>
             <td>
-              {{if gt (len .RedirectURIs) 1}}
+                {{if gt (len .RedirectURIs) 1}}
                 <div class="redirect-uris">
-                  {{range .RedirectURIs}}
+                    {{range .RedirectURIs}}
                     <span class="redirect-uri">{{.}}</span>
-                  {{end}}
+                    {{end}}
                 </div>
-              {{else if eq (len .RedirectURIs) 1}}
+                {{else if eq (len .RedirectURIs) 1}}
                 <span class="redirect-uri">{{index .RedirectURIs 0}}</span>
-              {{else}}
+                {{else}}
                 <span class="text-muted">No redirect URIs</span>
-              {{end}}
+                {{end}}
             </td>
             <td>
-              {{if .HasSecret}}
+                {{if .HasSecret}}
                 <span class="status-active">Active</span>
-              {{else}}
+                {{else}}
                 <span class="status-inactive">No Secret</span>
-              {{end}}
+                {{end}}
             </td>
             <td>
-              <a href="/edit/{{.ID}}" class="btn btn-secondary btn-small">Edit</a>
+                <a href="/edit/{{.ID}}" class="btn btn-secondary btn-small">Edit</a>
             </td>
-          </tr>
-          {{end}}
+        </tr>
+        {{end}}
         </tbody>
-      </table>
-      {{else}}
-      <div class="empty-state">
+    </table>
+    {{else}}
+    <div class="empty-state">
         <h3>No OIDC clients configured</h3>
         <p>Create your first OIDC client to get started with authentication.</p>
         <a href="/new" class="btn btn-primary">Add New Client</a>
-      </div>
-      {{end}}
-    </main>
-  </body>
-</html> 
+    </div>
+    {{end}}
+</main>
+{{end}}

@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -35,34 +36,35 @@ import (
 )
 
 // Command line flags
-// Migrated from legacy/tsidp.go:64-73
 var (
-	flagPort               = flag.Int("port", 443, "port to listen on")
-	flagLocalPort          = flag.Int("local-port", -1, "allow requests from localhost")
-	flagUseLocalTailscaled = flag.Bool("use-local-tailscaled", false, "use local tailscaled instead of tsnet")
-	flagFunnel             = flag.Bool("funnel", false, "use Tailscale Funnel to make tsidp available on the public internet")
-	flagHostname           = flag.String("hostname", "idp", "tsnet hostname to use instead of idp")
-	flagDir                = flag.String("dir", "", "tsnet state directory; a default one will be created if not provided")
-	flagEnableSTS          = flag.Bool("enable-sts", false, "enable OIDC STS token exchange support")
+	flagPort               = flag.Int("port", envIntOr("TSIDP_PORT", 443), "port to listen on")
+	flagLocalPort          = flag.Int("local-port", envIntOr("TSIDP_LOCAL_PORT", -1), "allow requests from localhost")
+	flagUseLocalTailscaled = flag.Bool("use-local-tailscaled", envknob.Bool("TSIDP_USE_LOCAL_TAILSCALED"), "use local tailscaled instead of tsnet")
+	flagFunnel             = flag.Bool("funnel", envknob.Bool("TSIDP_USE_FUNNEL"), "use Tailscale Funnel to make tsidp available on the public internet")
+	flagHostname           = flag.String("hostname", cmp.Or(envknob.String("TS_HOSTNAME"), "idp"), "tsnet hostname to use instead of idp")
+	flagDir                = flag.String("dir", envknob.String("TS_STATE_DIR"), "tsnet state directory; a default one will be created if not provided")
+	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
+	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
 
 	// application logging levels
-	flagLogLevel = flag.String("log", "info", "log levels: debug, info, warn, error")
+	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
 
 	// extended debugging information
-	flagDebugAllRequests = flag.Bool("debug-all-requests", false, "capture and print all HTTP requests and responses")
-	flagDebugTSNet       = flag.Bool("debug-tsnet", false, "enable tsnet.Server logging")
+	flagDebugAllRequests = flag.Bool("debug-all-requests", envknob.Bool("TSIDP_DEBUG_ALL_REQUESTS"), "capture and print all HTTP requests and responses")
+	flagDebugTSNet       = flag.Bool("debug-tsnet", envknob.Bool("TSIDP_DEBUG_TSNET"), "enable tsnet.Server logging")
+
+	flagVersion = flag.Bool("version", false, "print version and exit")
 )
 
 // main initializes and starts the tsidp server
-// Migrated from legacy/tsidp.go:75-239
 func main() {
-	flag.Parse()
 	ctx := context.Background()
-	if !envknob.UseWIPCode() {
-		slog.Error("cmd/tsidp is a work in progress and has not been security reviewed;\nits use requires TAILSCALE_USE_WIP_CODE=1 be set in the environment for now.")
-		os.Exit(1)
-	}
 
+	flag.Parse()
+	if *flagVersion {
+		fmt.Println(server.GetVersion())
+		os.Exit(0)
+	}
 	switch *flagLogLevel {
 	case "debug":
 		slog.SetLogLoggerLevel(slog.LevelDebug)
@@ -87,6 +89,15 @@ func main() {
 		lns []net.Listener
 	)
 	if *flagUseLocalTailscaled {
+		fmt.Println("")
+		fmt.Println("┌─[ IMPORTANT WARNING ]────────────────────────────────────────────────────┐")
+		fmt.Println("│                                                                          │")
+		fmt.Println("│  -use-local-tailscaled is for development only.                          │")
+		fmt.Println("│                                                                          │")
+		fmt.Println("│  Do not use it in production deployments.                                │")
+		fmt.Println("│                                                                          │")
+		fmt.Println("└──────────────────────────────────────────────────────────────────────────┘")
+		fmt.Println("")
 		lc = &local.Client{}
 		st, err = lc.StatusWithoutPeers(ctx)
 		if err != nil {
@@ -131,6 +142,16 @@ func main() {
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
 		}
+
+		if *flagAdvertiseTags != "" {
+			tags := strings.Split(*flagAdvertiseTags, ",")
+			for i, tag := range tags {
+				tags[i] = strings.TrimSpace(tag)
+			}
+			ts.AdvertiseTags = tags
+			slog.Info("Using advertise tags", slog.String("tags", strings.Join(tags, ",")))
+		}
+
 		if *flagDebugTSNet {
 			ts.Logf = func(format string, args ...any) {
 				cur := slog.SetLogLoggerLevel(slog.LevelDebug) // force debug if this option is on
@@ -138,16 +159,19 @@ func main() {
 				slog.SetLogLoggerLevel(cur)
 			}
 		}
+
 		st, err = ts.Up(ctx)
 		if err != nil {
 			slog.Error("failed to start tsnet server", slog.Any("error", err))
 			os.Exit(1)
 		}
+
 		lc, err = ts.LocalClient()
 		if err != nil {
 			slog.Error("failed to get local client", slog.Any("error", err))
 			os.Exit(1)
 		}
+
 		var ln net.Listener
 		if *flagFunnel {
 			if err := ipn.CheckFunnelAccess(uint16(*flagPort), st.Self); err != nil {
@@ -344,4 +368,12 @@ func (rw *responseWrapper) Write(b []byte) (int, error) {
 
 	// Write to the original response writer
 	return rw.ResponseWriter.Write(b)
+}
+
+func envIntOr(envVar string, implicitValue int) int {
+	val, ok := envknob.LookupInt(envVar)
+	if !ok {
+		return implicitValue
+	}
+	return val
 }

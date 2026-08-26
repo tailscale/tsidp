@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +17,6 @@ import (
 )
 
 // TestFunnelClientBackwardCompatibility tests backward compatibility for client field names
-// Migrated from legacy/tsidp_test.go:24-106
 func TestFunnelClientBackwardCompatibility(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -78,7 +78,7 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 			// Since FunnelClient doesn't have custom UnmarshalJSON in the new structure,
 			// we need to handle backward compatibility differently.
 			// For now, we'll test the expected format directly.
-			var rawData map[string]interface{}
+			var rawData map[string]any
 			if err := json.Unmarshal([]byte(tt.jsonData), &rawData); err != nil {
 				t.Fatalf("failed to unmarshal raw data: %v", err)
 			}
@@ -89,7 +89,7 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 			client.Name = rawData["name"].(string)
 
 			// Handle redirect URIs
-			if uris, ok := rawData["redirect_uris"].([]interface{}); ok {
+			if uris, ok := rawData["redirect_uris"].([]any); ok {
 				client.RedirectURIs = make([]string, len(uris))
 				for i, uri := range uris {
 					client.RedirectURIs[i] = uri.(string)
@@ -110,7 +110,6 @@ func TestFunnelClientBackwardCompatibility(t *testing.T) {
 }
 
 // TestServeDynamicClientRegistration tests the dynamic client registration endpoint
-// Migrated from legacy/tsidp_test.go:108-321
 func TestServeDynamicClientRegistration(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -149,7 +148,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			expectStatus: http.StatusCreated,
 			checkResponse: func(t *testing.T, body []byte) {
 				// Parse as raw JSON to verify exact field names
-				var rawResp map[string]interface{}
+				var rawResp map[string]any
 				if err := json.Unmarshal(body, &rawResp); err != nil {
 					t.Fatalf("failed to unmarshal response: %v", err)
 				}
@@ -251,7 +250,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			isFunnel:     true,
 			expectStatus: http.StatusUnauthorized,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -269,7 +268,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			body:         `{"client_name": "Test Client"}`,
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -287,7 +286,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			body:         `{"redirect_uris": []}`,
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -305,7 +304,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			body:         `{invalid json}`,
 			expectStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -322,7 +321,7 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 			method:       "GET",
 			expectStatus: http.StatusMethodNotAllowed,
 			checkResponse: func(t *testing.T, body []byte) {
-				var errResp map[string]interface{}
+				var errResp map[string]any
 				if err := json.Unmarshal(body, &errResp); err != nil {
 					t.Fatalf("expected JSON error response, got: %s", body)
 				}
@@ -398,7 +397,6 @@ func TestServeDynamicClientRegistration(t *testing.T) {
 }
 
 // TestRedirectURIValidation tests redirect URI validation logic
-// Migrated from legacy/tsidp_test.go:323-385
 func TestRedirectURIValidation(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -448,12 +446,7 @@ func TestRedirectURIValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a helper function that matches the validation logic
 			isValidRedirectURI := func(clientURIs []string, requestURI string) bool {
-				for _, uri := range clientURIs {
-					if requestURI == uri {
-						return true
-					}
-				}
-				return false
+				return slices.Contains(clientURIs, requestURI)
 			}
 
 			validRedirect := isValidRedirectURI(tt.clientURIs, tt.requestURI)
@@ -466,7 +459,6 @@ func TestRedirectURIValidation(t *testing.T) {
 }
 
 // TestSplitRedirectURIs tests splitting redirect URIs from a newline-separated string
-// Migrated from legacy/ui_test.go:11-52
 func TestSplitRedirectURIs(t *testing.T) {
 	// Helper function that mimics the UI helper
 	splitRedirectURIs := func(input string) []string {
@@ -528,7 +520,6 @@ func TestSplitRedirectURIs(t *testing.T) {
 }
 
 // TestJoinRedirectURIs tests joining redirect URIs into a newline-separated string
-// Migrated from legacy/ui_test.go:54-90
 func TestJoinRedirectURIs(t *testing.T) {
 	// Helper function that mimics the UI helper
 	joinRedirectURIs := func(uris []string) string {

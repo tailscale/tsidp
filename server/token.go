@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,7 +36,6 @@ const (
 )
 
 // Token endpoint types
-// Migrated from legacy/tsidp.go:1604-1616
 
 type oidcTokenResponse struct {
 	IDToken      string `json:"id_token"`
@@ -46,7 +46,6 @@ type oidcTokenResponse struct {
 }
 
 // Claims types
-// Migrated from legacy/tsidp.go:1792-1807
 
 type tailscaleClaims struct {
 	jwt.Claims `json:",inline"`
@@ -144,7 +143,6 @@ func (tc tailscaleClaims) toMap() map[string]any {
 }
 
 // serveToken is the main /token endpoint handler
-// Migrated from legacy/tsidp.go:921-942
 func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
@@ -180,7 +178,6 @@ func (s *IDPServer) serveToken(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAuthorizationCodeGrant handles the authorization code grant type
-// Migrated from legacy/tsidp.go:1212-1267
 func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Request) {
 	code := r.FormValue("code")
 	if code == "" {
@@ -238,7 +235,6 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 }
 
 // handleRefreshTokenGrant handles the refresh token grant type
-// Migrated from legacy/tsidp.go:1269-1337
 func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request) {
 	rt := r.FormValue("refresh_token")
 	if rt == "" {
@@ -283,14 +279,7 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 		// Ensure requested resources are subset of original grant
 		if len(ar.Resources) > 0 {
 			for _, requested := range validatedResources {
-				found := false
-				for _, allowed := range ar.Resources {
-					if requested == allowed {
-						found = true
-						break
-					}
-				}
-				if !found {
+				if found := slices.Contains(ar.Resources, requested); !found {
 					writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "requested resource not in original grant", nil)
 					return
 				}
@@ -307,7 +296,6 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 }
 
 // serveTokenExchange implements the OIDC STS token exchange flow per RFC 8693
-// Migrated from legacy/tsidp.go:1012-1210
 func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
@@ -492,7 +480,7 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 
 	// Return RFC 8693 compliant response
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
+	response := map[string]any{
 		"access_token":      newAccessToken,
 		"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
 		"token_type":        "Bearer",
@@ -534,14 +522,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		// For exchanged tokens, use the audiences directly
 		audience = jwt.Audience(ar.Audiences)
 		// Also include the original client if not already in audiences
-		hasOriginal := false
-		for _, aud := range ar.Audiences {
-			if aud == ar.OriginalClientID {
-				hasOriginal = true
-				break
-			}
-		}
-		if !hasOriginal && ar.OriginalClientID != "" {
+		if hasOriginal := slices.Contains(ar.Audiences, ar.OriginalClientID); !hasOriginal && ar.OriginalClientID != "" {
 			audience = append(audience, ar.OriginalClientID)
 		}
 	} else {
@@ -659,7 +640,6 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 }
 
 // identifyClient identifies the client making the request
-// Migrated from legacy/tsidp.go:946-988
 func (s *IDPServer) identifyClient(r *http.Request) string {
 	// Check funnel client with Basic Auth
 	if clientID, clientSecret, ok := r.BasicAuth(); ok {
@@ -705,7 +685,6 @@ func (s *IDPServer) identifyClient(r *http.Request) string {
 }
 
 // validateResourcesForUser checks if the user is allowed to access the requested resources
-// Migrated from legacy/tsidp.go:426-472
 func (s *IDPServer) validateResourcesForUser(who *apitype.WhoIsResponse, requestedResources []string) ([]string, error) {
 	// Check ACL grant using the same capability as we would use for STS token exchange
 	rules, err := tailcfg.UnmarshalCapJSON[capRule](who.CapMap, "tailscale.com/cap/tsidp")
@@ -754,7 +733,6 @@ func (s *IDPServer) validateResourcesForUser(who *apitype.WhoIsResponse, request
 }
 
 // validateCodeVerifier validates the PKCE code verifier
-// Migrated from legacy/tsidp.go:476-501
 func validateCodeVerifier(verifier, challenge, method string) error {
 	// Validate code_verifier format (43-128 characters, unreserved characters only)
 	if len(verifier) < 43 || len(verifier) > 128 {
@@ -783,7 +761,6 @@ func validateCodeVerifier(verifier, challenge, method string) error {
 }
 
 // generateCodeChallenge creates a code challenge from a code verifier using the specified method
-// Migrated from legacy/tsidp.go:505-520
 func generateCodeChallenge(verifier, method string) (string, error) {
 	switch method {
 	case "plain":
@@ -798,7 +775,6 @@ func generateCodeChallenge(verifier, method string) (string, error) {
 }
 
 // serveIntrospect handles the /introspect endpoint for token introspection (RFC 7662)
-// Migrated from legacy/tsidp.go:1475-1602
 func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeHTTPError(w, r, http.StatusMethodNotAllowed, ecInvalidRequest, "method not allowed", nil)
@@ -923,7 +899,6 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowRelyingParty checks if the relying party is allowed to access the token
-// Migrated from legacy/tsidp.go:520-552
 func (ar *AuthRequest) allowRelyingParty(r *http.Request) (int, error) {
 	if ar.FunnelRP == nil {
 		return http.StatusUnauthorized, fmt.Errorf("tsidp: no relying party configured")

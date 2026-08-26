@@ -450,4 +450,23 @@ tbody tr:hover {
   .client-id {
     font-size: 10px;
   }
-} 
+}
+
+/* Footer */
+.app-footer {
+  margin-top: 60px;
+  padding: 24px 0;
+  border-top: 1px solid rgb(var(--color-gray-800));
+}
+
+.footer-content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.version-info {
+  color: rgb(var(--color-gray-500));
+  font-size: 14px;
+}

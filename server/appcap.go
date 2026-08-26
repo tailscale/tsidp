@@ -80,7 +80,7 @@ func (s *IDPServer) addGrantAccessContext(handler http.HandlerFunc) http.Handler
 
 		var remoteAddr string
 		if s.localTSMode {
-			remoteAddr = r.Header.Get("X-Forwarded-For")
+			remoteAddr = lastForwardedForAddr(r)
 		} else {
 			remoteAddr = r.RemoteAddr
 		}

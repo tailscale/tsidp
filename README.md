@@ -9,7 +9,7 @@
 
 ## Prerequisites
 
-- A Tailscale network (tailnet) with magicDNS and HTTPS enabled
+- A Tailscale network (tailnet) with MagicDNS and HTTPS enabled
 - A Tailscale authentication key from your tailnet
 - (Recommended) Docker installed on your system
 - Ability to set an Application capability grant
@@ -18,12 +18,12 @@
 
 ### (Recommended) Using the pre-built image
 
-Docker images are automatically published on when releases are tagged.
+Docker images are automatically published at <https://ghcr.io/tailscale/tsidp> when releases are tagged.
 
 > [!TIP]
 > Replace `YOUR_TAILSCALE_AUTHKEY` with your Tailscale authentication key in the following commands:
 >
-> Use an existing auth key or create a new auth key in the [Tailscale dashboard](https://login.tailscale.com/admin/settings/keys). Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
+> Use an existing auth key or create a new auth key in the [**Keys**](https://login.tailscale.com/admin/settings/keys) page of the Tailscale admin console. Ensure you select an existing [tag](https://tailscale.com/kb/1068/tags) or create a new one.
 
 Here is an example [docker compose](https://docs.docker.com/compose/) YAML file for tsidp:
 
@@ -51,6 +51,23 @@ Once tsidp has started, visit `https://idp.yourtailnet.ts.net` in a browser to c
 
 > [!NOTE]
 > If you're running tsidp for the first time it may take a few minutes for the TLS certificate to generate. You may not be able to access the service until the certificate is ready.
+
+> [!NOTE]
+> **Using OAuth Client Secrets**
+>
+> As an alternative to traditional auth keys, you can use OAuth client secrets for automatic node registration.
+>
+> **Setup:**
+> 1. In the [Tailscale admin console](https://login.tailscale.com/admin/settings/oauth), create an OAuth client with **Auth Keys → Write** scope
+> 2. Ensure the advertise tag (e.g. `tag:tsidp`) is defined in your ACL `tagOwners`
+> 3. Set `TS_AUTHKEY` to your OAuth client secret (`tskey-client-...`)
+> 4. Set `TS_ADVERTISE_TAGS` (or `--advertise-tags`) — **required** when using OAuth client secrets
+>
+> ```yaml
+> environment:
+>   - TS_AUTHKEY=tskey-client-xxxxx
+>   - TS_ADVERTISE_TAGS=tag:tsidp
+> ```
 
 ### Other Ways to Build and Run
 
@@ -88,7 +105,7 @@ $ TAILSCALE_USE_WIP_CODE=1 TS_AUTHKEY={YOUR_TAILSCALE_AUTHKEY} TSNET_FORCE_LOGIN
 > tsidp's application capability schema are still in development and may change at anytime.
 
 - Set an [Application capability](https://tailscale.com/kb/1537/grants-app-capabilities) to grant access to the admin UI and DCR endpoints.
-- Configure grants in the [Tailscale console](https://login.tailscale.com/admin/acls/).
+- Configure grants in the [**Access controls**](https://login.tailscale.com/admin/acls/) page of the Tailscale admin console.
 - App capability grants are per request and updated immediately. No need to restart tsidp.
 
 ### Example
@@ -137,22 +154,23 @@ $ TAILSCALE_USE_WIP_CODE=1 TS_AUTHKEY={YOUR_TAILSCALE_AUTHKEY} TSNET_FORCE_LOGIN
 
 The `tsidp-server` is configured by several command-line flags:
 
-| Flag                    | Description                                                                                        | Default  |
-|-------------------------|----------------------------------------------------------------------------------------------------|----------|
-| `-dir <path>`           | Directory path to save tsnet and tsidp state. Recommend to be set.                                 | `""`     |
-| `-hostname <hostname>`  | hostname on tailnet. Will become `<hostname>.your-tailnet.ts.net`                                  | `idp`    |
-| `-port <port>`          | Port to listen on                                                                                  | `443`    |
-| `-local-port <port>`    | Listen on `localhost:<port>`. Useful for testing                                                   | disabled |
-| `-use-local-tailscaled` | Use local tailscaled instead of tsnet                                                              | `false`  |
-| `-funnel`               | Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products | disabled |
-| `-enable-sts`           | Enable OAuth token exchange using RFC 8693                                                         | disabled |
-| `-log <level>`          | Set logging level: `debug`, `info`, `warn`, `error`                                                | `info`   |
-| `-debug-all-requests`   | For development. Prints all requests and responses                                                 | disabled |
-| `-debug-tsnet`          | For development. Enables debug level logging with tsnet connection                                 | disabled |
+| Flag                           | Description                                                                                        | Default  |
+|--------------------------------|----------------------------------------------------------------------------------------------------|----------|
+| `-dir <path>`                  | Directory path to save tsnet and tsidp state. Recommend to be set.                                 | `""`     |
+| `-hostname <hostname>`         | hostname on tailnet. Will become `<hostname>.your-tailnet.ts.net`                                  | `idp`    |
+| `-port <port>`                 | Port to listen on                                                                                  | `443`    |
+| `-local-port <port>`           | Listen on `localhost:<port>`. Useful for testing                                                   | disabled |
+| `-use-local-tailscaled`        | Use local tailscaled instead of tsnet                                                              | `false`  |
+| `-funnel`                      | Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products | disabled |
+| `-enable-sts`                  | Enable OAuth token exchange using RFC 8693                                                         | disabled |
+| `-advertise-tags <tags>`       | Comma-separated advertise tags (e.g. `tag:tsidp`). Required when using OAuth client secrets        | `""`     |
+| `-log <level>`                 | Set logging level: `debug`, `info`, `warn`, `error`                                                | `info`   |
+| `-debug-all-requests`          | For development. Prints all requests and responses                                                 | disabled |
+| `-debug-tsnet`                 | For development. Enables debug level logging with tsnet connection                                 | disabled |
 
 ### CLI Environment Variables
 
-The `tsidp-server` binary is configured through the CLI flags above. However, there are several environment variables that configure the libraries `tsidp-server` uses to connect to the Tailnet.
+The `tsidp-server` binary is configured through the CLI flags above. However, there are several environment variables that configure the libraries `tsidp-server` uses to connect to the tailnet.
 
 #### Required
 
@@ -162,14 +180,19 @@ The `tsidp-server` binary is configured through the CLI flags above. However, th
 
 These environment variables are used when tsidp does not have any state information set in `-dir <path>`.
 
-- `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. If omitted a link will be printed to manually register.
+> [!WARNING]
+> **Serverless/Stateless Deployment**: tsidp requires persistent state storage to function properly in production. Without a persistent `-dir`, the service will re-register with Tailscale on every restart, lose dynamic OIDC client registrations, and invalidate user sessions. Serverless environments without persistent storage are not recommended for production use.
+
+- `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. Can be a traditional auth key or OAuth client secret (tskey-client-xxx). If omitted, a link will be printed to manually register.
+- `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets.
 - `TSNET_FORCE_LOGIN=1`: Force re-login of the node. Useful during development.
 
 ### Docker Environment Variables
 
 The Docker image exposes the CLI flags through environment variables. If omitted the default values for the CLI flags will be used.
 
-> [!NOTE] > `TS_STATE_DIR` and `TS_HOSTNAME` are legacy names. These will be replaced by `TSIDP_STATE_DIR` and `TSIDP_HOSTNAME` in the future.
+> [!NOTE]
+> `TS_STATE_DIR` and `TS_HOSTNAME` are legacy names. These will be replaced by `TSIDP_STATE_DIR` and `TSIDP_HOSTNAME` in the future.
 
 | Environment Variable                     | CLI flag                   |
 |------------------------------------------|----------------------------|
@@ -182,6 +205,8 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 | `TSIDP_LOG=<level>`                      | `-log <level>`             |
 | `TSIDP_DEBUG_TSNET=1`                    | `-debug-tsnet`             |
 | `TSIDP_DEBUG_ALL_REQUESTS=1`             | `-debug-all-requests`      |
+| `TS_AUTHKEY=<key>`                       | _(env var only)_           |
+| `TS_ADVERTISE_TAGS=<tags>`               | `-advertise-tags <tags>`   |
 
 ## Application Configuration Guides (WIP)
 

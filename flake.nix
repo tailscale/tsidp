@@ -13,14 +13,35 @@
       systems,
     }:
     let
-      goVersion = "1.24.7";
-      eachSystem = f: nixpkgs.lib.genAttrs (import systems) (s: f nixpkgs.legacyPackages.${s});
+      goVersion = "1.26.6";
+      goHash = "sha256-oHIcVMaIkBRI13rZs+x+p8R0cwdV/4kTgukuy5P/LLE=";
+      eachSystem =
+        f:
+        nixpkgs.lib.genAttrs (import systems) (
+          system:
+          f (
+            import nixpkgs {
+              inherit system;
+              overlays = [
+                (final: prev: {
+                  go_1_26 = prev.go_1_26.overrideAttrs {
+                    version = goVersion;
+                    src = prev.fetchurl {
+                      url = "https://go.dev/dl/go${goVersion}.src.tar.gz";
+                      hash = goHash;
+                    };
+                  };
+                })
+              ];
+            }
+          )
+        );
     in
     {
       formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
 
       packages = eachSystem (pkgs: {
-        tsidp = pkgs.buildGo124Module {
+        tsidp = pkgs.buildGo126Module {
           pname = "tsidp";
           version = if (self ? shortRev) then self.shortRev else "dev";
           src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
@@ -40,11 +61,11 @@
           vendorHash = pkgs.lib.fileContents ./go.mod.sri;
         };
 
-        default = self.packages.${pkgs.system}.tsidp;
+        default = self.packages.${pkgs.stdenv.hostPlatform.system}.tsidp;
       });
 
       overlays.default = final: prev: {
-        tsidp = self.packages.${final.system}.tsidp;
+        tsidp = self.packages.${final.stdenv.hostPlatform.system}.tsidp;
       };
 
       devShells = eachSystem (pkgs: {
@@ -90,7 +111,7 @@
 
             package = mkOption {
               type = lib.types.package;
-              default = self.packages.${pkgs.system}.tsidp;
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.tsidp;
               description = "Package to use for the tsidp service.";
             };
 

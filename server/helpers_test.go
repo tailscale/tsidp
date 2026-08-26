@@ -4,15 +4,19 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"testing"
 
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/client/local"
+	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 )
 
@@ -43,6 +47,45 @@ func setupTestServer(t *testing.T, lc *local.Client) *IDPServer {
 	srv.lazySigner.Set(oidcTestingSigner(t))
 
 	return srv
+}
+
+// whoisRoundTripper is an http.RoundTripper that returns a canned WhoIs
+// response. It is used to test code that calls local.Client.WhoIs without
+// needing a running tailscaled.
+type whoisRoundTripper struct {
+	response *apitype.WhoIsResponse
+	err      bool // if true, return HTTP 500
+}
+
+func (rt *whoisRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path != "/localapi/v0/whois" {
+		return &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+		}, nil
+	}
+	if rt.err {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Body:       io.NopCloser(bytes.NewBufferString("whois error")),
+		}, nil
+	}
+	b, _ := json.Marshal(rt.response)
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(b)),
+	}, nil
+}
+
+// newTestWhoIsClient returns a *local.Client whose WhoIs calls return the
+// given response or an error. This uses local.Client's Transport field to
+// intercept HTTP requests without needing a running tailscaled.
+func newTestWhoIsClient(t *testing.T, whoisResponse *apitype.WhoIsResponse, whoisErr bool) *local.Client {
+	t.Helper()
+	return &local.Client{
+		Transport: &whoisRoundTripper{response: whoisResponse, err: whoisErr},
+	}
 }
 
 func mustMarshalJSON(t *testing.T, v any) tailcfg.RawMessage {
@@ -121,7 +164,6 @@ func normalizeMap(t *testing.T, m map[string]any) map[string]any {
 }
 
 // marshalCapRules is a helper to convert stsCapRule slice to JSON for testing
-// Migrated from legacy/tsidp_test.go:2653-2661
 func marshalCapRules(rules []capRule) []tailcfg.RawMessage {
 	// UnmarshalCapJSON expects each rule to be a separate RawMessage
 	var msgs []tailcfg.RawMessage

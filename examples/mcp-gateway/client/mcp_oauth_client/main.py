@@ -10,6 +10,7 @@ import json
 import logging
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -164,7 +165,7 @@ class MCPClient:
         self.callback_port = callback_port
         self.session: Optional[ClientSession] = None
         self.session_id: Optional[str] = None
-        self.storage = FileTokenStorage()
+        self.storage = FileTokenStorage(server_url=server_url)
         self.debug_logging = debug_logging
         self._request_counter = 0
     
@@ -499,12 +500,29 @@ def interactive(ctx, server_url: str, port: int):
 
 
 @cli.command()
+@click.argument('server_url', required=False)
 @click.pass_context
-def clear_auth(ctx):
-    """Clear stored OAuth tokens and client information."""
-    storage = FileTokenStorage()
-    storage.clear_all()
-    console.print("[green]✓ Cleared all stored authentication data[/green]")
+def clear_auth(ctx, server_url: Optional[str]):
+    """Clear stored OAuth tokens and client information.
+
+    If SERVER_URL is provided, only clears data for that server.
+    Otherwise, clears all cached OAuth data.
+    """
+    # Get storage directory
+    storage_dir = Path(__file__).parent.parent / '.oauth-cache'
+
+    if server_url:
+        # Clear only for specific server
+        storage = FileTokenStorage(server_url=server_url)
+        storage.clear_all()
+        console.print(f"[green]✓ Cleared authentication data for {server_url}[/green]")
+    elif storage_dir.exists():
+        # Clear all cached data
+        import shutil
+        shutil.rmtree(storage_dir)
+        console.print("[green]✓ Cleared all stored authentication data[/green]")
+    else:
+        console.print("[yellow]No authentication data to clear[/yellow]")
 
 
 def main():

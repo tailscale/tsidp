@@ -1,0 +1,7 @@
+client/mcp_oauth_client.egg-info/
+client/mcp_oauth_client/__pycache__/
+client/.oauth-cache/
+server/src/mcp_auth_server/__pycache__/
+gateway/mcp_auth_gateway/__pycache__/
+
+

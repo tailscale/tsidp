@@ -3,6 +3,9 @@ version: 2
 builds:
   - env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/tailscale/tsidp/server.version={{.Version}}
     goos:
       - linux
       - darwin
