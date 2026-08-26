@@ -155,7 +155,7 @@ $ TAILSCALE_USE_WIP_CODE=1 TS_AUTHKEY={YOUR_TAILSCALE_AUTHKEY} TSNET_FORCE_LOGIN
 The `tsidp-server` is configured by several command-line flags:
 
 | Flag                           | Description                                                                                        | Default  |
-| ------------------------------ | -------------------------------------------------------------------------------------------------- | -------- |
+|--------------------------------|----------------------------------------------------------------------------------------------------|----------|
 | `-dir <path>`                  | Directory path to save tsnet and tsidp state. Recommend to be set.                                 | `""`     |
 | `-hostname <hostname>`         | hostname on tailnet. Will become `<hostname>.your-tailnet.ts.net`                                  | `idp`    |
 | `-port <port>`                 | Port to listen on                                                                                  | `443`    |
@@ -195,7 +195,7 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 > `TS_STATE_DIR` and `TS_HOSTNAME` are legacy names. These will be replaced by `TSIDP_STATE_DIR` and `TSIDP_HOSTNAME` in the future.
 
 | Environment Variable                     | CLI flag                   |
-| ---------------------------------------- | -------------------------- |
+|------------------------------------------|----------------------------|
 | `TS_STATE_DIR=<path>` _\*note prefix_    | `-dir <path>`              |
 | `TS_HOSTNAME=<hostname>` _\*note prefix_ | `-hostname <hostname>`     |
 | `TSIDP_PORT=<port>`                      | `-port <port>`             |
@@ -216,6 +216,7 @@ tsidp can be used as IdP server for any application that supports custom OIDC pr
 > Note: If you'd like to use tsidp to login to a SaaS application outside of your tailnet rather than a self-hosted app inside of your tailnet, you'll need to run tsidp with `--funnel` enabled.
 
 - [Proxmox](docs/proxmox/README.md)
+- [Portainer](docs/portainer/README.md)
 
 ### TODOs
 
