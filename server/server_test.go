@@ -5,6 +5,7 @@ package server
 
 import (
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 )
@@ -49,6 +50,24 @@ func TestNew(t *testing.T) {
 	if srv.funnelClients == nil {
 		t.Error("funnelClients map not initialized")
 	}
+}
+
+func TestSetAdditionalScopes(t *testing.T) {
+	srv := New(nil, "", false, false, false)
+
+	expectedScopes := []string{"openid", "email", "profile"}
+	supported := srv.supportedScopes.AsSlice()
+	if !slices.Equal(expectedScopes, supported) {
+		t.Errorf("expected: %q, got: %q", expectedScopes, supported)
+
+	}
+	srv.SetAdditionalScopes([]string{"additional", "scopes"})
+	supported = srv.supportedScopes.AsSlice()
+	expectedScopes = append(expectedScopes, []string{"additional", "scopes"}...)
+	if !slices.Equal(supported, expectedScopes) {
+		t.Errorf("expected: %q, got: %q", expectedScopes, supported)
+	}
+
 }
 
 // TestSetServerURL tests setting and getting server URL

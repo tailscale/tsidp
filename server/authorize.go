@@ -178,7 +178,7 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	}
 
 	validatedScopes := make([]string, 0, len(requestedScopes))
-	supportedScopes := openIDSupportedScopes.AsSlice()
+	supportedScopes := s.supportedScopes.AsSlice()
 
 	for _, scope := range requestedScopes {
 		if supported := slices.Contains(supportedScopes, scope); !supported {
@@ -188,6 +188,37 @@ func (s *IDPServer) validateScopes(requestedScopes []string) ([]string, error) {
 	}
 
 	return validatedScopes, nil
+}
+
+// validateRequestedScopes checks requested scopes against a JWT "scope" claim value
+// (a space-delimited string or a slice of scope strings)
+// returning a de-duplicated slice of allowed scopes, preserving order.
+func validateRequestedScopes(requested []string, raw any) []string {
+	var allowed []string
+	switch v := raw.(type) {
+	case string:
+		allowed = strings.Fields(v)
+	case []string:
+		allowed = v
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				allowed = append(allowed, s)
+			}
+		}
+	case nil:
+		allowed = make([]string, 0)
+	}
+	result := make([]string, 0, len(requested))
+	allowed = append(allowed, openIDSupportedScopes.AsSlice()...)
+
+	for _, scope := range requested {
+		if slices.Contains(allowed, scope) && !slices.Contains(result, scope) {
+			result = append(result, scope)
+		}
+	}
+
+	return result
 }
 
 // redirectAuthError redirects to the client's redirect_uri with error parameters

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"gopkg.in/square/go-jose.v2"
 	"tailscale.com/types/views"
@@ -79,6 +80,18 @@ var (
 	pkceCodeChallengeMethodsSupported = views.SliceOf([]string{"plain", "S256"})
 )
 
+func mergeScopes(existing, additionalScopes []string) views.Slice[string] {
+	merged := append([]string{}, existing...)
+
+	for _, scope := range additionalScopes {
+		if scope != "" && !slices.Contains(merged, scope) {
+			merged = append(merged, scope)
+		}
+	}
+	return views.SliceOf(merged)
+
+}
+
 // serveOpenIDConfig serves the OpenID Connect discovery endpoint
 func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
@@ -102,7 +115,7 @@ func (s *IDPServer) serveOpenIDConfig(w http.ResponseWriter, r *http.Request) {
 		UserInfoEndpoint:                  s.serverURL + "/userinfo",
 		TokenEndpoint:                     s.serverURL + "/token",
 		IntrospectionEndpoint:             s.serverURL + "/introspect",
-		ScopesSupported:                   openIDSupportedScopes,
+		ScopesSupported:                   s.supportedScopes,
 		ResponseTypesSupported:            openIDSupportedReponseTypes,
 		SubjectTypesSupported:             openIDSupportedSubjectTypes,
 		ClaimsSupported:                   openIDSupportedClaims,
@@ -159,7 +172,7 @@ func (s *IDPServer) serveOAuthMetadata(w http.ResponseWriter, r *http.Request) {
 		JWKS_URI:                           s.serverURL + "/.well-known/jwks.json",
 		ResponseTypesSupported:             openIDSupportedReponseTypes,
 		GrantTypesSupported:                views.SliceOf(grantTypes),
-		ScopesSupported:                    openIDSupportedScopes,
+		ScopesSupported:                    s.supportedScopes,
 		TokenEndpointAuthMethodsSupported:  oauthSupportedTokenEndpointAuthMethods,
 		ResourceIndicatorsSupported:        true, // RFC 8707 support
 		AuthorizationDetailsTypesSupported: views.SliceOf([]string{"resource_indicators"}),
