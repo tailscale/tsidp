@@ -920,7 +920,7 @@ func (ar *AuthRequest) allowRelyingParty(r *http.Request) (int, error) {
 		return http.StatusBadRequest, fmt.Errorf("tsidp: client_id mismatch")
 	}
 	if clientSecretcmp != 1 {
-		return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret: [%s] [%s]", clientID, clientSecret)
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret for client %q", clientID)
 	}
 	return http.StatusOK, nil
 }
