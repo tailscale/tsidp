@@ -73,7 +73,7 @@ var (
 
 	// OAuth 2.0 specific metadata constants
 	oauthSupportedGrantTypes               = views.SliceOf([]string{"authorization_code", "refresh_token"})
-	oauthSupportedTokenEndpointAuthMethods = views.SliceOf([]string{"client_secret_post", "client_secret_basic"})
+	oauthSupportedTokenEndpointAuthMethods = views.SliceOf([]string{"client_secret_post", "client_secret_basic", "none"})
 
 	// PKCE support (RFC 7636)
 	pkceCodeChallengeMethodsSupported = views.SliceOf([]string{"plain", "S256"})

@@ -910,15 +910,29 @@ func (ar *AuthRequest) allowRelyingParty(r *http.Request) (int, error) {
 		clientSecret = r.FormValue("client_secret")
 	}
 
-	if clientID == "" || clientSecret == "" {
+	if clientID == "" {
 		return http.StatusUnauthorized, fmt.Errorf("tsidp: missing client credentials")
 	}
 
 	clientIDcmp := subtle.ConstantTimeCompare([]byte(clientID), []byte(ar.FunnelRP.ID))
-	clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
 	if clientIDcmp != 1 {
 		return http.StatusBadRequest, fmt.Errorf("tsidp: client_id mismatch")
 	}
+
+	// Public clients (RFC 6749 §2.1, OIDC Core §9) authenticate via PKCE
+	// instead of a client secret, so don't require one here. PKCE itself is
+	// enforced by the code_verifier check in handleAuthorizationCodeGrant.
+	if ar.FunnelRP.TokenEndpointAuthMethod == "none" {
+		if ar.CodeChallenge == "" {
+			return http.StatusUnauthorized, fmt.Errorf("tsidp: public client requires PKCE")
+		}
+		return http.StatusOK, nil
+	}
+
+	if clientSecret == "" {
+		return http.StatusUnauthorized, fmt.Errorf("tsidp: missing client credentials")
+	}
+	clientSecretcmp := subtle.ConstantTimeCompare([]byte(clientSecret), []byte(ar.FunnelRP.Secret))
 	if clientSecretcmp != 1 {
 		return http.StatusUnauthorized, fmt.Errorf("tsidp: invalid client secret: [%s] [%s]", clientID, clientSecret)
 	}

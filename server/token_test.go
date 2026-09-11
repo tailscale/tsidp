@@ -1364,20 +1364,24 @@ func TestServeToken(t *testing.T) {
 // TestServeTokenWithClientValidation verifies OAuth token endpoint security
 func TestServeTokenWithClientValidation(t *testing.T) {
 	tests := []struct {
-		name                string
-		method              string
-		grantType           string
-		code                string
-		clientID            string
-		clientSecret        string
-		redirectURI         string
-		useBasicAuth        bool
-		setupAuthRequest    bool
-		authRequestClient   string
-		authRequestRedirect string
-		expectError         bool
-		expectCode          int
-		expectIDToken       bool
+		name                    string
+		method                  string
+		grantType               string
+		code                    string
+		clientID                string
+		clientSecret            string
+		redirectURI             string
+		useBasicAuth            bool
+		setupAuthRequest        bool
+		authRequestClient       string
+		authRequestRedirect     string
+		tokenEndpointAuthMethod string
+		codeChallenge           string
+		codeChallengeMethod     string
+		codeVerifier            string
+		expectError             bool
+		expectCode              int
+		expectIDToken           bool
 	}{
 		{
 			name:                "valid token exchange with form credentials",
@@ -1459,6 +1463,36 @@ func TestServeTokenWithClientValidation(t *testing.T) {
 			expectError:         true,
 			expectCode:          http.StatusBadRequest,
 		},
+		{
+			name:                    "public client with valid PKCE and no client_secret",
+			method:                  "POST",
+			grantType:               "authorization_code",
+			code:                    "valid-code",
+			clientID:                "test-client",
+			redirectURI:             "https://rp.example.com/callback",
+			setupAuthRequest:        true,
+			authRequestClient:       "test-client",
+			authRequestRedirect:     "https://rp.example.com/callback",
+			tokenEndpointAuthMethod: "none",
+			codeChallenge:           "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+			codeChallengeMethod:     "S256",
+			codeVerifier:            "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+			expectIDToken:           true,
+		},
+		{
+			name:                    "public client without PKCE is rejected",
+			method:                  "POST",
+			grantType:               "authorization_code",
+			code:                    "valid-code",
+			clientID:                "test-client",
+			redirectURI:             "https://rp.example.com/callback",
+			setupAuthRequest:        true,
+			authRequestClient:       "test-client",
+			authRequestRedirect:     "https://rp.example.com/callback",
+			tokenEndpointAuthMethod: "none",
+			expectError:             true,
+			expectCode:              http.StatusUnauthorized,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1490,21 +1524,24 @@ func TestServeTokenWithClientValidation(t *testing.T) {
 				var funnelClientPtr *FunnelClient
 				if tt.authRequestClient != "" {
 					funnelClientPtr = &FunnelClient{
-						ID:          tt.authRequestClient,
-						Secret:      "test-secret",
-						Name:        "Test Client",
-						RedirectURI: tt.authRequestRedirect,
+						ID:                      tt.authRequestClient,
+						Secret:                  "test-secret",
+						Name:                    "Test Client",
+						RedirectURI:             tt.authRequestRedirect,
+						TokenEndpointAuthMethod: tt.tokenEndpointAuthMethod,
 					}
 					srv.funnelClients[tt.authRequestClient] = funnelClientPtr
 				}
 
 				srv.code["valid-code"] = &AuthRequest{
-					ClientID:    tt.authRequestClient,
-					Nonce:       "nonce123",
-					RedirectURI: tt.authRequestRedirect,
-					ValidTill:   now.Add(5 * time.Minute),
-					RemoteUser:  remoteUser,
-					FunnelRP:    funnelClientPtr,
+					ClientID:            tt.authRequestClient,
+					Nonce:               "nonce123",
+					RedirectURI:         tt.authRequestRedirect,
+					ValidTill:           now.Add(5 * time.Minute),
+					RemoteUser:          remoteUser,
+					FunnelRP:            funnelClientPtr,
+					CodeChallenge:       tt.codeChallenge,
+					CodeChallengeMethod: tt.codeChallengeMethod,
 				}
 			}
 
@@ -1513,6 +1550,9 @@ func TestServeTokenWithClientValidation(t *testing.T) {
 			form.Set("grant_type", tt.grantType)
 			form.Set("code", tt.code)
 			form.Set("redirect_uri", tt.redirectURI)
+			if tt.codeVerifier != "" {
+				form.Set("code_verifier", tt.codeVerifier)
+			}
 
 			if !tt.useBasicAuth {
 				if tt.clientID != "" {
