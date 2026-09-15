@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -597,7 +597,7 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 	}
 
 	// Create an OIDC token using this issuer's signer.
-	token, err := jwt.Signed(signer).Claims(tsClaimsWithExtra).CompactSerialize()
+	token, err := jwt.Signed(signer).Claims(tsClaimsWithExtra).Serialize()
 	if err != nil {
 		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "error creating JWT token", err)
 		return

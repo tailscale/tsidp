@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"gopkg.in/square/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 	"tailscale.com/types/views"
 )
 
