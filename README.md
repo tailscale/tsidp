@@ -14,6 +14,11 @@
 - (Recommended) Docker installed on your system
 - Ability to set an Application capability grant
 
+## Documentation
+
+- [Proxmox Setup](docs/proxmox/README.md)
+- [Synology Setup](docs/synology/README.md)
+
 ## Running tsidp
 
 ### (Recommended) Using the pre-built image
