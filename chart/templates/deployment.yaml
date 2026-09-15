@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tsidp.fullname" . }}
+  labels:
+    {{- include "tsidp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "tsidp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "tsidp.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "tsidp.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TAILSCALE_USE_WIP_CODE
+              value: "1"
+            - name: TS_STATE_DIR
+              value: "/data"
+            - name: TS_HOSTNAME
+              value: "{{ .Values.hostname }}"
+            - name: TSIDP_PORT
+              value: "{{ .Values.port }}"
+            {{- if .Values.enable_sts }}
+            - name: TSIDP_ENABLE_STS
+              value: "1"
+            {{- end }}
+            {{- if .Values.enable_funnel }}
+            - name: TSIDP_USE_FUNNEL
+              value: "1"
+            {{- end }}
+            {{- if .Values.auth_key }}
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tsidp.fullname" . }}-authkey
+                  key: auth_key
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: tsidp-data
+              mountPath: /data
+      volumes:
+        {{- if .Values.persistentVolumeClaim.enabled }}
+        - name: tsidp-data
+          persistentVolumeClaim:
+            claimName: {{ include "tsidp.fullname" . }}
+        {{- else }}
+        - name: tsidp-data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
