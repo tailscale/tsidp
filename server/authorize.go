@@ -51,7 +51,13 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uq := r.URL.Query()
+	// The authorization endpoint accepts parameters in the query string or,
+	// for POST, in a form-encoded body (RFC 6749 section 3.1).
+	if err := r.ParseForm(); err != nil {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "invalid form", err)
+		return
+	}
+	uq := r.Form
 	state := uq.Get("state")
 
 	redirectURI := uq.Get("redirect_uri")

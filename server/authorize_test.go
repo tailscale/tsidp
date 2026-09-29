@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -784,5 +785,63 @@ func TestLastForwardedForAddr(t *testing.T) {
 				t.Errorf("lastForwardedForAddr() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestServeAuthorizePostForm verifies that authorization request parameters
+// sent as a form-encoded POST body are honored, as RFC 6749 section 3.1
+// allows.
+func TestServeAuthorizePostForm(t *testing.T) {
+	lc := newTestWhoIsClient(t, &apitype.WhoIsResponse{Node: &tailcfg.Node{}}, false)
+	srv := setupTestServer(t, lc)
+	srv.funnelClients["test-client"] = &FunnelClient{
+		ID:           "test-client",
+		Secret:       "test-secret",
+		Name:         "Test Client",
+		RedirectURIs: []string{"https://rp.example.com/callback"},
+	}
+
+	form := url.Values{
+		"client_id":             {"test-client"},
+		"redirect_uri":          {"https://rp.example.com/callback"},
+		"state":                 {"random-state"},
+		"nonce":                 {"random-nonce"},
+		"scope":                 {"openid email"},
+		"code_challenge":        {"challenge"},
+		"code_challenge_method": {"S256"},
+	}
+	req := httptest.NewRequest("POST", "/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	srv.serveAuthorize(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d: %s", rr.Code, http.StatusFound, rr.Body.String())
+	}
+	loc, err := url.Parse(rr.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loc.Query().Get("state"); got != "random-state" {
+		t.Errorf("state = %q, want %q", got, "random-state")
+	}
+	code := loc.Query().Get("code")
+
+	srv.mu.Lock()
+	ar := srv.code[code]
+	srv.mu.Unlock()
+	if ar == nil {
+		t.Fatalf("no authorization request stored for code %q", code)
+	}
+	if ar.Nonce != "random-nonce" {
+		t.Errorf("Nonce = %q, want %q", ar.Nonce, "random-nonce")
+	}
+	if want := []string{"openid", "email"}; !slices.Equal(ar.Scopes, want) {
+		t.Errorf("Scopes = %v, want %v", ar.Scopes, want)
+	}
+	if ar.CodeChallenge != "challenge" || ar.CodeChallengeMethod != "S256" {
+		t.Errorf("PKCE = %q/%q, want challenge/S256", ar.CodeChallenge, ar.CodeChallengeMethod)
 	}
 }
