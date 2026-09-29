@@ -721,6 +721,10 @@ func TestServeAuthorize(t *testing.T) {
 				return
 			}
 
+			if remaining := time.Until(ar.ValidTill); remaining <= 0 || remaining > AuthCodeDuration {
+				t.Errorf("authorization code should expire within %v, got %v remaining", AuthCodeDuration, remaining)
+			}
+
 			if ar.ClientID != tt.clientID {
 				t.Errorf("expected clientID '%s', got '%s'", tt.clientID, ar.ClientID)
 			}
