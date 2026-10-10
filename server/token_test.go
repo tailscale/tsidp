@@ -1613,3 +1613,46 @@ func TestTokenCORSHeaders(t *testing.T) {
 		t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", ah)
 	}
 }
+
+func TestAuthorizationCodeExpired(t *testing.T) {
+	srv := setupTestServer(t, nil)
+	srv.funnelClients["test-client"] = &FunnelClient{
+		ID:           "test-client",
+		Secret:       "test-secret",
+		RedirectURIs: []string{"https://rp.example.com/callback"},
+	}
+	srv.code["expired-code"] = &AuthRequest{
+		ClientID:    "test-client",
+		RedirectURI: "https://rp.example.com/callback",
+		FunnelRP:    srv.funnelClients["test-client"],
+		ValidTill:   time.Now().Add(-time.Minute),
+		RemoteUser: &apitype.WhoIsResponse{
+			Node:        &tailcfg.Node{ID: 1, Name: "node1.example.ts.net.", User: 1},
+			UserProfile: &tailcfg.UserProfile{LoginName: "user@example.com"},
+		},
+	}
+
+	form := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {"expired-code"},
+		"redirect_uri":  {"https://rp.example.com/callback"},
+		"client_id":     {"test-client"},
+		"client_secret": {"test-secret"},
+	}
+	req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	srv.serveToken(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), ecInvalidGrant) {
+		t.Errorf("body = %s, want error %q", rr.Body.String(), ecInvalidGrant)
+	}
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if len(srv.accessToken) != 0 {
+		t.Error("expired code must not produce an access token")
+	}
+}
