@@ -13,8 +13,8 @@
       systems,
     }:
     let
-      goVersion = "1.26.6";
-      goHash = "sha256-oHIcVMaIkBRI13rZs+x+p8R0cwdV/4kTgukuy5P/LLE=";
+      goVersion = "1.27.2";
+      goHash = "sha256-A0ldorpkiU1A9cSZLklFT6eLUGkGBP+Stq//UIG3bmI=";
       eachSystem =
         f:
         nixpkgs.lib.genAttrs (import systems) (
@@ -24,7 +24,7 @@
               inherit system;
               overlays = [
                 (final: prev: {
-                  go_1_26 = prev.go_1_26.overrideAttrs {
+                  go_1_27 = prev.go_1_27.overrideAttrs {
                     version = goVersion;
                     src = prev.fetchurl {
                       url = "https://go.dev/dl/go${goVersion}.src.tar.gz";
@@ -41,7 +41,7 @@
       formatter = eachSystem (pkgs: pkgs.nixfmt-tree);
 
       packages = eachSystem (pkgs: {
-        tsidp = pkgs.buildGo126Module {
+        tsidp = pkgs.buildGo127Module {
           pname = "tsidp";
           version = if (self ? shortRev) then self.shortRev else "dev";
           src = pkgs.nix-gitignore.gitignoreSource [ ] ./.;
