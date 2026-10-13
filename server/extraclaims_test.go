@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"gopkg.in/square/go-jose.v2/jwt"
+	"github.com/go-jose/go-jose/v4/jwt"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 )

@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	filippo.io/csrf v0.2.1
-	gopkg.in/square/go-jose.v2 v2.6.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	tailscale.com v1.104.1
 )
 
