@@ -11,7 +11,12 @@ build-linux:
 	GOOS=linux GOARCH=amd64 go build -o build/tsidp-server-linux-amd64-$(shell date +%Y-%m-%d)-$(shell git rev-parse --short=5 HEAD) ./tsidp-server.go
 
 docker-image:
-	docker build -t tsidp:latest .
+	@if docker buildx version >/dev/null 2>&1; then \
+		docker buildx build --load -t tsidp:latest .; \
+	else \
+		echo "buildx not available, falling back to legacy docker build" >&2; \
+		docker build -t tsidp:latest .; \
+	fi
 
 test:
 	go test -count 1  . ./server
