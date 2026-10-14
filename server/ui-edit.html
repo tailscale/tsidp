@@ -22,10 +22,9 @@
         </div>
         {{end}}
 
-        {{if and .Secret .IsNew}}
+        {{if and .ID .IsNew}}
         <div class="client-info">
             <h3>Client Created Successfully!</h3>
-            <p class="warning">⚠️ Save both the Client ID and Secret now! The secret will not be shown again.</p>
 
             <div class="form-group">
                 <label>Client ID</label>
@@ -35,6 +34,8 @@
                 </div>
             </div>
 
+            {{if .Secret}}
+            <p class="warning">⚠️ Save both the Client ID and Secret now! The secret will not be shown again.</p>
             <div class="form-group">
                 <label>Client Secret</label>
                 <div class="secret-field">
@@ -42,6 +43,9 @@
                     <button type="button" onclick="copyValue(this.previousElementSibling, this)" class="btn btn-secondary btn-small">Copy</button>
                 </div>
             </div>
+            {{else}}
+            <p>This is a public client — no secret was issued. It authenticates using PKCE only.</p>
+            {{end}}
         </div>
         {{end}}
 
@@ -72,6 +76,25 @@
                 </div>
             </div>
 
+            {{if .IsNew}}
+            <div class="form-group">
+                <label for="token_endpoint_auth_method">Client authentication method</label>
+                <select
+                        id="token_endpoint_auth_method"
+                        name="token_endpoint_auth_method"
+                        class="form-input"
+                >
+                    <option value="client_secret_basic" {{if ne .TokenEndpointAuthMethod "none"}}selected{{end}}>Confidential (client secret)</option>
+                    <option value="none" {{if eq .TokenEndpointAuthMethod "none"}}selected{{end}}>Public (no secret, PKCE required)</option>
+                </select>
+                <div class="form-help">
+                    Public clients don't get a secret. PKCE is required (not optional)
+                    for public clients — the relying party must send a code_challenge
+                    at authorization time, or token exchange will be rejected.
+                </div>
+            </div>
+            {{end}}
+
             <div class="form-group">
                 <label for="redirect_uris">Redirect URIs <span class="required">*</span></label>
                 <textarea
@@ -100,6 +123,19 @@
                     The client ID cannot be changed.
                 </div>
             </div>
+
+            <div class="form-group">
+                <label>Client Authentication Method</label>
+                <input
+                        type="text"
+                        value="{{if .IsPublic}}Public (no secret, PKCE){{else}}Confidential (client secret){{end}}"
+                        readonly
+                        class="form-input form-input-readonly"
+                >
+                <div class="form-help">
+                    The authentication method is set at creation and cannot be changed. Delete and recreate the client to switch.
+                </div>
+            </div>
             {{end}}
 
             <div class="form-actions">
@@ -108,10 +144,12 @@
                 </button>
 
                 {{if .IsEdit}}
+                {{if not .IsPublic}}
                 <button type="submit" name="action" value="regenerate_secret" class="btn btn-warning"
                         onclick="return confirm('Are you sure you want to regenerate the client secret? The old secret will stop working immediately.')">
                     Regenerate Secret
                 </button>
+                {{end}}
 
                 <button type="submit" name="action" value="delete" class="btn btn-danger"
                         onclick="return confirm('Are you sure you want to delete this client? This cannot be undone.')">
@@ -129,7 +167,9 @@
                 <dd><code>{{.ID}}</code></dd>
                 <dt>Secret Status</dt>
                 <dd>
-                    {{if .HasSecret}}
+                    {{if .IsPublic}}
+                    <span class="status-inactive">Public (no secret)</span>
+                    {{else if .HasSecret}}
                     <span class="status-active">Secret configured</span>
                     {{else}}
                     <span class="status-inactive">No secret</span>
