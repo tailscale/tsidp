@@ -27,6 +27,7 @@ import (
 
 const (
 	TokenDuration        = 5 * time.Minute
+	AuthCodeDuration     = 5 * time.Minute
 	RefreshTokenDuration = 30 * 24 * time.Hour
 
 	// NotValidBeforeClockSkew is the delta between the nbf and iat
@@ -192,6 +193,10 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 	s.mu.Unlock()
 	if !ok {
 		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code not found", nil)
+		return
+	}
+	if ar.ValidTill.Before(time.Now()) {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code expired", nil)
 		return
 	}
 	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {
