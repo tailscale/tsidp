@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -46,6 +47,7 @@ var (
 	flagEnableSTS          = flag.Bool("enable-sts", envknob.Bool("TSIDP_ENABLE_STS"), "enable OIDC STS token exchange support")
 	flagAdvertiseTags      = flag.String("advertise-tags", envknob.String("TS_ADVERTISE_TAGS"), "comma-separated advertise tags (e.g. tag:tsidp,tag:server); required when using OAuth client secrets")
 	flagAuthKeyFile        = flag.String("authkey-file", envknob.String("TS_AUTHKEY_FILE"), "read the Tailscale auth key from this file instead of TS_AUTHKEY (e.g. for Docker/Kubernetes secrets); don't set both")
+	flagLoginServer        = flag.String("login-server", envknob.String("TS_LOGIN_SERVER"), "base URL of the control server to use instead of the Tailscale default (e.g. a Headscale server); empty means the Tailscale default")
 
 	// application logging levels
 	flagLogLevel = flag.String("log", cmp.Or(envknob.String("TSIDP_LOG"), "info"), "log levels: debug, info, warn, error")
@@ -83,13 +85,21 @@ func main() {
 	var (
 		lc          *local.Client
 		st          *ipnstate.Status
-		err         error
 		watcherChan chan error
 		cleanup     func()
 
 		lns []net.Listener
 	)
+	loginServer, err := parseLoginServer(*flagLoginServer)
+	if err != nil {
+		slog.Error("invalid -login-server", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	if *flagUseLocalTailscaled {
+		if loginServer != "" {
+			slog.Warn("login-server has no effect with -use-local-tailscaled; configure the control server on tailscaled instead", slog.String("url", loginServer))
+		}
 		if *flagAuthKeyFile != "" {
 			slog.Warn("authkey-file has no effect with -use-local-tailscaled", slog.String("path", *flagAuthKeyFile))
 		}
@@ -145,6 +155,11 @@ func main() {
 		ts := &tsnet.Server{
 			Hostname: *flagHostname,
 			Dir:      *flagDir,
+		}
+
+		if loginServer != "" {
+			ts.ControlURL = loginServer
+			slog.Info("using custom control server", slog.String("url", loginServer))
 		}
 
 		if *flagAuthKeyFile != "" {
@@ -398,6 +413,42 @@ func envIntOr(envVar string, implicitValue int) int {
 		return implicitValue
 	}
 	return val
+}
+
+// parseLoginServer validates the -login-server value and returns the
+// normalized control server URL (lowercase scheme, no trailing slashes).
+// An empty value returns "", which means the Tailscale default control
+// server is used.
+//
+// Errors use fixed messages and never include any part of the input, since
+// they are logged and the input may contain secrets.
+func parseLoginServer(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	if strings.Contains(s, "@") {
+		return "", errors.New("login server URL must not contain credentials")
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return "", errors.New("login server is not a valid URL")
+	}
+	if u.User != nil {
+		return "", errors.New("login server URL must not contain credentials")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", errors.New("login server must be an absolute http:// or https:// URL")
+	}
+	if u.Opaque != "" || u.Hostname() == "" {
+		return "", errors.New("login server URL has no host")
+	}
+	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.ContainsAny(s, "?#") {
+		return "", errors.New("login server URL must not contain a query or fragment")
+	}
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawPath = strings.TrimRight(u.RawPath, "/")
+	return u.String(), nil
 }
 
 func readAuthKeyFile(path string) (string, error) {
