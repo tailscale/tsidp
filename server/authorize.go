@@ -51,7 +51,11 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uq := r.URL.Query()
+	if err := r.ParseForm(); err != nil {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidRequest, "failed to parse form", err)
+		return
+	}
+	uq := r.Form
 	state := uq.Get("state")
 
 	redirectURI := uq.Get("redirect_uri")

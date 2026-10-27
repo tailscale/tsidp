@@ -539,6 +539,8 @@ func TestServeAuthorize(t *testing.T) {
 		useFunnel      bool // whether to simulate funnel request
 		mockWhoIsError bool // whether to make WhoIs return an error
 		isTaggedNode   bool // whether to make IsTagged return true
+		usePOSTForm    bool
+		rawBody        string
 		expectCode     int
 	}{
 		// Security boundary test: funnel rejection
@@ -610,6 +612,28 @@ func TestServeAuthorize(t *testing.T) {
 			clientRedirect: "https://rp.example.com/callback",
 			expectCode:     http.StatusFound,
 		},
+		{
+			name:           "successfully issues auth code from POST form",
+			clientID:       "test-client",
+			redirectURI:    "https://rp.example.com/callback",
+			state:          "random-state",
+			nonce:          "random-nonce",
+			clientRedirect: "https://rp.example.com/callback",
+			usePOSTForm:    true,
+			expectCode:     http.StatusFound,
+		},
+		{
+			name:        "POST form missing redirect_uri",
+			clientID:    "test-client",
+			usePOSTForm: true,
+			expectCode:  http.StatusBadRequest,
+		},
+		{
+			name:        "malformed POST form",
+			usePOSTForm: true,
+			rawBody:     "client_id=%zz",
+			expectCode:  http.StatusBadRequest,
+		},
 	}
 
 	for _, tt := range tests {
@@ -655,8 +679,17 @@ func TestServeAuthorize(t *testing.T) {
 				query.Set("nonce", tt.nonce)
 			}
 
-			reqURL += "?" + query.Encode()
-			req := httptest.NewRequest("GET", reqURL, nil)
+			var req *http.Request
+			if tt.usePOSTForm {
+				body := query.Encode()
+				if tt.rawBody != "" {
+					body = tt.rawBody
+				}
+				req = httptest.NewRequest("POST", reqURL, strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			} else {
+				req = httptest.NewRequest("GET", reqURL+"?"+query.Encode(), nil)
+			}
 			req.RemoteAddr = "127.0.0.1:12345"
 
 			// Set funnel header only when explicitly testing funnel behavior
