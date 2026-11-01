@@ -309,6 +309,12 @@ func TestPKCE(t *testing.T) {
 			authQuery:    "client_id=test-client&redirect_uri=https://example.com/callback",
 			codeVerifier: "", // no code_verifier sent
 		},
+		{
+			name:             "code_verifier without code_challenge - PKCE downgrade",
+			authQuery:        "client_id=test-client&redirect_uri=https://example.com/callback",
+			codeVerifier:     "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+			expectTokenError: true,
+		},
 	}
 
 	for _, tt := range tests {

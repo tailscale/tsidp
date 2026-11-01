@@ -216,6 +216,11 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 			writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code verification failed", err)
 			return
 		}
+	} else if r.FormValue("code_verifier") != "" {
+		// Reject a code_verifier for a code issued without a code_challenge,
+		// to prevent PKCE downgrade attacks (RFC 9700 section 2.1.1).
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code_verifier sent but no code_challenge was used", nil)
+		return
 	}
 
 	// RFC 8707: Check for resource parameter in token request
