@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/util/mak"
@@ -118,6 +119,7 @@ func (s *IDPServer) serveAuthorize(w http.ResponseWriter, r *http.Request) {
 		RedirectURI: redirectURI,
 		ClientID:    clientID,
 		FunnelRP:    funnelClient, // Store the validated client
+		ValidTill:   time.Now().Add(AuthCodeDuration),
 	}
 
 	// Parse space-delimited scopes

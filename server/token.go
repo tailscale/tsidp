@@ -29,6 +29,10 @@ const (
 	TokenDuration        = 5 * time.Minute
 	RefreshTokenDuration = 30 * 24 * time.Hour
 
+	// AuthCodeDuration is how long an authorization code can be redeemed.
+	// RFC 6749 section 4.1.2 recommends a maximum of 10 minutes.
+	AuthCodeDuration = 5 * time.Minute
+
 	// NotValidBeforeClockSkew is the delta between the nbf and iat
 	// claims to account for clock skew between servers and clients
 	// 5 minutes is a typical value with 10 seconds being a common minimum
@@ -192,6 +196,10 @@ func (s *IDPServer) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.
 	s.mu.Unlock()
 	if !ok {
 		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code not found", nil)
+		return
+	}
+	if ar.ValidTill.Before(time.Now()) {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "code expired", nil)
 		return
 	}
 	if httpStatusCode, err := ar.allowRelyingParty(r); err != nil {

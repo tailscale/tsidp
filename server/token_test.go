@@ -801,6 +801,88 @@ func TestTokenExpiration(t *testing.T) {
 	}
 }
 
+// TestAuthorizationCodeExpiration tests that expired authorization codes are rejected
+func TestAuthorizationCodeExpiration(t *testing.T) {
+	tests := []struct {
+		name         string
+		codeAge      time.Duration
+		expectStatus int
+		expectError  string
+	}{
+		{
+			name:         "valid code",
+			codeAge:      1 * time.Minute, // issued 1 minute ago (still valid)
+			expectStatus: http.StatusOK,
+		},
+		{
+			name:         "expired code",
+			codeAge:      6 * time.Minute, // issued 6 minutes ago (expired)
+			expectStatus: http.StatusBadRequest,
+			expectError:  "code expired",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := setupTestServer(t, nil)
+			srv.code["test-code"] = &AuthRequest{
+				ClientID:    "test-client",
+				RedirectURI: "https://rp.example.com/callback",
+				FunnelRP:    srv.funnelClients["test-client"],
+				ValidTill:   time.Now().Add(5*time.Minute - tt.codeAge),
+				RemoteUser: &apitype.WhoIsResponse{
+					Node: &tailcfg.Node{
+						ID:   1,
+						Name: "node1.example.ts.net",
+						User: tailcfg.UserID(1),
+					},
+					UserProfile: &tailcfg.UserProfile{
+						LoginName:   "user@example.com",
+						DisplayName: "Test User",
+					},
+				},
+			}
+
+			form := url.Values{
+				"grant_type":    {"authorization_code"},
+				"code":          {"test-code"},
+				"redirect_uri":  {"https://rp.example.com/callback"},
+				"client_id":     {"test-client"},
+				"client_secret": {"test-secret"},
+			}
+
+			req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			rr := httptest.NewRecorder()
+			srv.serveToken(rr, req)
+
+			if rr.Code != tt.expectStatus {
+				t.Errorf("expected status %d, got %d: %s", tt.expectStatus, rr.Code, rr.Body.String())
+			}
+
+			if tt.expectError != "" {
+				var errResp map[string]any
+				if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+					t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+				}
+				if errResp["error"] != "invalid_grant" {
+					t.Errorf("expected error code 'invalid_grant', got: %v", errResp["error"])
+				}
+				if desc, ok := errResp["error_description"].(string); !ok || !strings.Contains(desc, tt.expectError) {
+					t.Errorf("expected error description %q, got: %v", tt.expectError, errResp["error_description"])
+				}
+			}
+
+			// Codes are single use, whether or not the exchange succeeded
+			if _, exists := srv.code["test-code"]; exists {
+				t.Error("expected code to be deleted after use")
+			}
+		})
+	}
+}
+
 // TestRefreshTokenWithResources tests refresh tokens with resource downscoping (RFC 8707)
 func TestRefreshTokenWithResources(t *testing.T) {
 	tests := []struct {
