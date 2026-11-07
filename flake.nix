@@ -246,7 +246,11 @@
                   Type = "simple";
                   ExecStart =
                     let
-                      args = lib.cli.toGNUCommandLineShell { mkOptionName = k: "-${k}"; } {
+                      args = lib.cli.toCommandLineShell (k: {
+                        option = "-${k}";
+                        sep = null;
+                        explicitBool = false;
+                      }) {
                         hostname = cfg.settings.hostName;
                         port = cfg.settings.port;
                         local-port = cfg.settings.localPort;
