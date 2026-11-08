@@ -93,15 +93,6 @@ func main() {
 		if *flagAuthKeyFile != "" {
 			slog.Warn("authkey-file has no effect with -use-local-tailscaled", slog.String("path", *flagAuthKeyFile))
 		}
-		fmt.Println("")
-		fmt.Println("┌─[ IMPORTANT WARNING ]────────────────────────────────────────────────────┐")
-		fmt.Println("│                                                                          │")
-		fmt.Println("│  -use-local-tailscaled is for development only.                          │")
-		fmt.Println("│                                                                          │")
-		fmt.Println("│  Do not use it in production deployments.                                │")
-		fmt.Println("│                                                                          │")
-		fmt.Println("└──────────────────────────────────────────────────────────────────────────┘")
-		fmt.Println("")
 		lc = &local.Client{}
 		st, err = lc.StatusWithoutPeers(ctx)
 		if err != nil {
