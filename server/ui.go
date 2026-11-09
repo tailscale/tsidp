@@ -256,6 +256,9 @@ func (s *IDPServer) handleEditClient(w http.ResponseWriter, r *http.Request) {
 			s.mu.Lock()
 			delete(s.funnelClients, clientID)
 			err := s.storeFunnelClientsLocked()
+			if err == nil {
+				s.deleteClientTokensLocked(clientID)
+			}
 			s.mu.Unlock()
 
 			if err != nil {
