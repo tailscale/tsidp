@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -777,9 +778,10 @@ func TestOfflineAccessScope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lc := newTestWhoIsClient(t, &apitype.WhoIsResponse{
 				Node: &tailcfg.Node{
-					ID:   1,
-					Name: "node1.example.ts.net",
-					User: tailcfg.UserID(1),
+					ID:        1,
+					Name:      "node1.example.ts.net",
+					User:      tailcfg.UserID(1),
+					Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 				},
 				UserProfile: &tailcfg.UserProfile{
 					ID:          tailcfg.UserID(1),
