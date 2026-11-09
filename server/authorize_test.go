@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -434,9 +435,10 @@ func TestPKCEWithRefreshToken(t *testing.T) {
 		Scopes:              []string{"openid", "offline_access"},
 		RemoteUser: &apitype.WhoIsResponse{
 			Node: &tailcfg.Node{
-				ID:   1,
-				Name: "node1.example.ts.net",
-				User: tailcfg.UserID(1),
+				ID:        1,
+				Name:      "node1.example.ts.net",
+				User:      tailcfg.UserID(1),
+				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 			},
 			UserProfile: &tailcfg.UserProfile{
 				LoginName:   "user@example.com",
@@ -446,6 +448,7 @@ func TestPKCEWithRefreshToken(t *testing.T) {
 		ValidTill: time.Now().Add(5 * time.Minute),
 	}
 	s.code[code] = ar
+	s.lc = newTestWhoIsClient(t, ar.RemoteUser, false) // the refresh looks the user up again
 
 	// Step 2: Exchange code for tokens with code_verifier
 	form := url.Values{

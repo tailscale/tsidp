@@ -4,10 +4,12 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -266,6 +268,17 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Check the user again, and build the new tokens from the current WhoIs
+	// result so that grant changes (CapMap, extraClaims) take effect.
+	who, err := s.recheckRefreshUser(r.Context(), ar.RemoteUser)
+	if err != nil {
+		writeHTTPError(w, r, http.StatusBadRequest, ecInvalidGrant, "user could not be re-verified", err)
+		return
+	}
+	arCopy := *ar
+	arCopy.RemoteUser = who
+	ar = &arCopy
+
 	// RFC 8707: Check for resource parameter in refresh token request
 	resources := r.Form["resource"]
 	if len(resources) > 0 {
@@ -293,6 +306,40 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 	}
 
 	s.issueTokens(w, r, ar)
+}
+
+// recheckRefreshUser asks tailscaled again who owns the node the user logged
+// in from. A refresh is only allowed while that is still the same untagged
+// node owned by the same user.
+//
+// The refresh request comes from the relying party, not from the user's
+// device, so the node is looked up by the Tailscale IP stored at login. That
+// address stays the same when the node's key rotates. If the address has
+// since been given to another node, the node ID check catches it.
+func (s *IDPServer) recheckRefreshUser(ctx context.Context, prev *apitype.WhoIsResponse) (*apitype.WhoIsResponse, error) {
+	if s.lc == nil {
+		return nil, errors.New("no LocalClient to look up the user")
+	}
+	if prev == nil || prev.Node == nil || len(prev.Node.Addresses) == 0 {
+		return nil, errors.New("no node address stored for this grant")
+	}
+	addr := prev.Node.Addresses[0].Addr()
+	who, err := s.lc.WhoIs(ctx, addr.String())
+	if err != nil {
+		return nil, fmt.Errorf("WhoIs %v: %w", addr, err)
+	}
+	if who == nil || who.Node == nil || who.UserProfile == nil {
+		return nil, fmt.Errorf("WhoIs %v: incomplete response", addr)
+	}
+	switch {
+	case who.Node.ID != prev.Node.ID:
+		return nil, fmt.Errorf("%v now belongs to node %v, not node %v", addr, who.Node.ID, prev.Node.ID)
+	case who.Node.View().IsTagged():
+		return nil, fmt.Errorf("node %v is now tagged", who.Node.ID)
+	case who.Node.User != prev.Node.User:
+		return nil, fmt.Errorf("node %v now belongs to user %v, not user %v", who.Node.ID, who.Node.User, prev.Node.User)
+	}
+	return who, nil
 }
 
 // serveTokenExchange implements the OIDC STS token exchange flow per RFC 8693
