@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -44,6 +45,11 @@ func TestScopeHandling(t *testing.T) {
 			name:            "invalid scope",
 			authQuery:       "client_id=test-client&redirect_uri=https://example.com/callback&scope=openid invalid_scope",
 			expectAuthError: true,
+		},
+		{
+			name:           "offline_access scope",
+			authQuery:      "client_id=test-client&redirect_uri=https://example.com/callback&scope=openid offline_access",
+			expectedScopes: []string{"openid", "offline_access"},
 		},
 		{
 			name:           "extra spaces in scope",
@@ -210,6 +216,24 @@ func TestValidateScopes(t *testing.T) {
 			inputScopes:    []string{"openid", "email", "openid"},
 			expectedScopes: []string{"openid", "email", "openid"},
 			expectError:    false,
+		},
+		{
+			name:           "offline_access scope",
+			inputScopes:    []string{"openid", "offline_access"},
+			expectedScopes: []string{"openid", "offline_access"},
+			expectError:    false,
+		},
+		{
+			name:           "offline_access with email and profile",
+			inputScopes:    []string{"openid", "email", "profile", "offline_access"},
+			expectedScopes: []string{"openid", "email", "profile", "offline_access"},
+			expectError:    false,
+		},
+		{
+			// Scope values are case-sensitive (RFC 6749 section 3.3).
+			name:        "offline_access is case-sensitive",
+			inputScopes: []string{"openid", "OFFLINE_ACCESS"},
+			expectError: true,
 		},
 	}
 
@@ -729,6 +753,134 @@ func TestServeAuthorize(t *testing.T) {
 			}
 			if ar.Nonce != tt.nonce {
 				t.Errorf("expected nonce '%s', got '%s'", tt.nonce, ar.Nonce)
+			}
+		})
+	}
+}
+
+// TestOfflineAccessScope runs the authorization code flow through
+// serveAuthorize and serveToken with and without the offline_access scope.
+// Clients that request offline_access must get a code instead of an
+// invalid_scope error. Refresh token issuance must not depend on the scope:
+// tsidp issues a refresh token for every authorization code grant, so
+// accepting offline_access must not change what any client receives.
+func TestOfflineAccessScope(t *testing.T) {
+	tests := []struct {
+		name  string
+		scope string
+	}{
+		{name: "openid only", scope: "openid"},
+		{name: "openid offline_access", scope: "openid offline_access"},
+		{name: "all supported scopes", scope: "openid email profile offline_access"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lc := newTestWhoIsClient(t, &apitype.WhoIsResponse{
+				Node: &tailcfg.Node{
+					ID:        1,
+					Name:      "node1.example.ts.net",
+					User:      tailcfg.UserID(1),
+					Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
+				},
+				UserProfile: &tailcfg.UserProfile{
+					ID:          tailcfg.UserID(1),
+					LoginName:   "user@example.com",
+					DisplayName: "Test User",
+				},
+			}, false)
+			srv := setupTestServer(t, lc)
+			srv.funnelClients["test-client"].RedirectURIs = []string{"https://rp.example.com/callback"}
+
+			// Step 1: /authorize must redirect back with a code, not an error.
+			query := url.Values{
+				"client_id":     {"test-client"},
+				"redirect_uri":  {"https://rp.example.com/callback"},
+				"response_type": {"code"},
+				"scope":         {tt.scope},
+				"state":         {"test-state"},
+			}
+			req := httptest.NewRequest("GET", "/authorize?"+query.Encode(), nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			rr := httptest.NewRecorder()
+			srv.serveAuthorize(rr, req)
+
+			if rr.Code != http.StatusFound {
+				t.Fatalf("authorize: expected status %d, got %d: %s", http.StatusFound, rr.Code, rr.Body.String())
+			}
+			redirectURL, err := url.Parse(rr.Header().Get("Location"))
+			if err != nil {
+				t.Fatalf("authorize: bad Location header: %v", err)
+			}
+			if e := redirectURL.Query().Get("error"); e != "" {
+				t.Fatalf("authorize: got error %q: %s", e, redirectURL.Query().Get("error_description"))
+			}
+			code := redirectURL.Query().Get("code")
+			if code == "" {
+				t.Fatal("authorize: expected code in redirect")
+			}
+
+			srv.mu.Lock()
+			ar, ok := srv.code[code]
+			srv.mu.Unlock()
+			if !ok {
+				t.Fatal("authorize: expected authorization request to be stored")
+			}
+			if got, want := strings.Join(ar.Scopes, " "), tt.scope; got != want {
+				t.Errorf("stored scopes = %q, want %q", got, want)
+			}
+
+			// Step 2: exchange the code. A refresh token is issued in every case.
+			form := url.Values{
+				"grant_type":    {"authorization_code"},
+				"code":          {code},
+				"redirect_uri":  {"https://rp.example.com/callback"},
+				"client_id":     {"test-client"},
+				"client_secret": {"test-secret"},
+			}
+			tokenReq := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+			tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			tokenRR := httptest.NewRecorder()
+			srv.serveToken(tokenRR, tokenReq)
+
+			if tokenRR.Code != http.StatusOK {
+				t.Fatalf("token: expected status 200, got %d: %s", tokenRR.Code, tokenRR.Body.String())
+			}
+			var tokenResp oidcTokenResponse
+			if err := json.Unmarshal(tokenRR.Body.Bytes(), &tokenResp); err != nil {
+				t.Fatalf("token: failed to unmarshal response: %v", err)
+			}
+			if tokenResp.RefreshToken == "" {
+				t.Fatal("token: expected refresh_token in response")
+			}
+
+			// Step 3: the refresh token works and keeps the granted scopes.
+			refreshForm := url.Values{
+				"grant_type":    {"refresh_token"},
+				"refresh_token": {tokenResp.RefreshToken},
+				"client_id":     {"test-client"},
+				"client_secret": {"test-secret"},
+			}
+			refreshReq := httptest.NewRequest("POST", "/token", strings.NewReader(refreshForm.Encode()))
+			refreshReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			refreshRR := httptest.NewRecorder()
+			srv.serveToken(refreshRR, refreshReq)
+
+			if refreshRR.Code != http.StatusOK {
+				t.Fatalf("refresh: expected status 200, got %d: %s", refreshRR.Code, refreshRR.Body.String())
+			}
+			var refreshResp oidcTokenResponse
+			if err := json.Unmarshal(refreshRR.Body.Bytes(), &refreshResp); err != nil {
+				t.Fatalf("refresh: failed to unmarshal response: %v", err)
+			}
+			srv.mu.Lock()
+			refreshedAR, ok := srv.accessToken[refreshResp.AccessToken]
+			srv.mu.Unlock()
+			if !ok {
+				t.Fatal("refresh: new access token not found in server state")
+			}
+			if got, want := strings.Join(refreshedAR.Scopes, " "), tt.scope; got != want {
+				t.Errorf("refreshed token scopes = %q, want %q", got, want)
 			}
 		})
 	}

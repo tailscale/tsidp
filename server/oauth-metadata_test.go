@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -149,6 +150,48 @@ func TestOAuthMetadataRefreshTokenSupport(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected refresh_token in grant_types_supported")
+	}
+}
+
+// TestScopesSupportedMetadata tests that both discovery documents advertise
+// the scopes that /authorize accepts, including offline_access.
+func TestScopesSupportedMetadata(t *testing.T) {
+	s := &IDPServer{
+		serverURL:   "https://idp.test.ts.net",
+		loopbackURL: "http://localhost:8080",
+	}
+
+	for _, endpoint := range []string{
+		"/.well-known/openid-configuration",
+		"/.well-known/oauth-authorization-server",
+	} {
+		t.Run(endpoint, func(t *testing.T) {
+			req := httptest.NewRequest("GET", endpoint, nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			rr := httptest.NewRecorder()
+
+			if strings.Contains(endpoint, "openid") {
+				s.serveOpenIDConfig(rr, req)
+			} else {
+				s.serveOAuthMetadata(rr, req)
+			}
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d", rr.Code)
+			}
+
+			var metadata struct {
+				ScopesSupported []string `json:"scopes_supported"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &metadata); err != nil {
+				t.Fatalf("failed to unmarshal metadata: %v", err)
+			}
+
+			want := []string{"openid", "email", "profile", "offline_access"}
+			if !slices.Equal(metadata.ScopesSupported, want) {
+				t.Errorf("scopes_supported = %v, want %v", metadata.ScopesSupported, want)
+			}
+		})
 	}
 }
 

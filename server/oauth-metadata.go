@@ -60,7 +60,12 @@ var (
 	})
 
 	// As defined in the OpenID spec this should be "openid".
-	openIDSupportedScopes = views.SliceOf([]string{"openid", "email", "profile"})
+	//
+	// "offline_access" (OIDC Core 1.0 section 11) is accepted so that clients
+	// which ask for a refresh token the standard way are not rejected. It
+	// does not change what is issued: the token endpoint returns a refresh
+	// token for every authorization code grant, with or without this scope.
+	openIDSupportedScopes = views.SliceOf([]string{"openid", "email", "profile", "offline_access"})
 
 	// We only support getting the id_token.
 	openIDSupportedReponseTypes = views.SliceOf([]string{"id_token", "code"})
