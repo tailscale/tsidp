@@ -1094,6 +1094,14 @@ func TestRefreshTokenRechecksUser(t *testing.T) {
 			},
 		},
 		{
+			name: "node key expired",
+			afterLogin: func(rt *whoisRoundTripper) {
+				w := alice()
+				w.Node.Expired = true
+				rt.response = w
+			},
+		},
+		{
 			name: "address now belongs to another node",
 			afterLogin: func(rt *whoisRoundTripper) {
 				w := alice()

@@ -310,7 +310,7 @@ func (s *IDPServer) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Reque
 
 // recheckRefreshUser asks tailscaled again who owns the node the user logged
 // in from. A refresh is only allowed while that is still the same untagged
-// node owned by the same user.
+// node owned by the same user, and its key has not expired.
 //
 // The refresh request comes from the relying party, not from the user's
 // device, so the node is looked up by the Tailscale IP stored at login. That
@@ -336,6 +336,8 @@ func (s *IDPServer) recheckRefreshUser(ctx context.Context, prev *apitype.WhoIsR
 		return nil, fmt.Errorf("%v now belongs to node %v, not node %v", addr, who.Node.ID, prev.Node.ID)
 	case who.Node.View().IsTagged():
 		return nil, fmt.Errorf("node %v is now tagged", who.Node.ID)
+	case who.Node.Expired:
+		return nil, fmt.Errorf("node %v key has expired", who.Node.ID)
 	case who.Node.User != prev.Node.User:
 		return nil, fmt.Errorf("node %v now belongs to user %v, not user %v", who.Node.ID, who.Node.User, prev.Node.User)
 	}
