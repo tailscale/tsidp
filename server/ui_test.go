@@ -6,7 +6,10 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestUIDenyOnMissingApplicationGrant(t *testing.T) {
@@ -162,5 +165,71 @@ func TestUserInterfaceCSRF(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
 			}
 		})
+	}
+}
+
+// TestEditClientDeleteRevokesTokens checks that deleting a client in the web
+// UI also removes its codes and tokens, as DELETE /clients/{id} does, and
+// leaves other clients' tokens alone.
+func TestEditClientDeleteRevokesTokens(t *testing.T) {
+	alice := refreshRecheckWhoIs(501, "alice@example.com", nil)
+	srv := setupTestServer(t, newTestWhoIsClient(t, alice, false))
+	srv.refreshToken = make(map[string]*AuthRequest)
+	srv.funnelClients["other-client"] = &FunnelClient{ID: "other-client", Secret: "other-secret"}
+
+	for _, id := range []string{"test-client", "other-client"} {
+		ar := &AuthRequest{
+			ClientID:   id,
+			FunnelRP:   srv.funnelClients[id],
+			RemoteUser: alice,
+			ValidTill:  time.Now().Add(time.Hour),
+		}
+		srv.code[id+"-code"] = ar
+		srv.accessToken[id+"-at"] = ar
+		srv.refreshToken[id+"-rt"] = ar
+	}
+
+	form := url.Values{"action": {"delete"}}
+	req := httptest.NewRequest("POST", "/edit/test-client", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	srv.handleEditClient(rr, req)
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("delete: got %d: %s", rr.Code, rr.Body.String())
+	}
+	if _, ok := srv.funnelClients["test-client"]; ok {
+		t.Fatal("client still registered after delete")
+	}
+
+	stores := []struct {
+		suffix string
+		m      map[string]*AuthRequest
+	}{
+		{"-code", srv.code},
+		{"-at", srv.accessToken},
+		{"-rt", srv.refreshToken},
+	}
+	for _, st := range stores {
+		if _, ok := st.m["test-client"+st.suffix]; ok {
+			t.Errorf("test-client%s still present after delete", st.suffix)
+		}
+		if _, ok := st.m["other-client"+st.suffix]; !ok {
+			t.Errorf("other-client%s was removed", st.suffix)
+		}
+	}
+
+	// The deleted client's refresh token no longer works.
+	form = url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {"test-client-rt"},
+		"client_id":     {"test-client"},
+		"client_secret": {"test-secret"},
+	}
+	req = httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr = httptest.NewRecorder()
+	srv.serveToken(rr, req)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), ecInvalidGrant) {
+		t.Errorf("refresh after delete: got %d, want 400 invalid_grant", rr.Code)
 	}
 }

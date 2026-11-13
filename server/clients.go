@@ -250,8 +250,20 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 	}
 
 	delete(s.funnelClients, clientID)
+	s.deleteClientTokensLocked(clientID)
 
-	// Clean up any tokens associated with this client
+	if err := s.storeFunnelClientsLocked(); err != nil {
+		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store clients", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteClientTokensLocked removes the authorization codes, access tokens and
+// refresh tokens issued to clientID.
+// Caller must hold s.mu lock
+func (s *IDPServer) deleteClientTokensLocked(clientID string) {
 	for code, ar := range s.code {
 		if ar.ClientID == clientID {
 			delete(s.code, code)
@@ -267,13 +279,6 @@ func (s *IDPServer) serveDeleteClient(w http.ResponseWriter, r *http.Request, cl
 			delete(s.refreshToken, token)
 		}
 	}
-
-	if err := s.storeFunnelClientsLocked(); err != nil {
-		writeHTTPError(w, r, http.StatusInternalServerError, ecServerError, "failed to store clients", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // serveDynamicClientRegistration handles OAuth 2.0 Dynamic Client Registration (RFC 7591)

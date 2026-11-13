@@ -16,6 +16,7 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -599,7 +600,7 @@ func TestRefreshTokenFlow(t *testing.T) {
 							Name:      "node1.example.ts.net",
 							User:      tailcfg.UserID(1),
 							Key:       key.NodePublic{},
-							Addresses: []netip.Prefix{},
+							Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 						},
 						UserProfile: &tailcfg.UserProfile{
 							LoginName:     "user@example.com",
@@ -608,6 +609,9 @@ func TestRefreshTokenFlow(t *testing.T) {
 						},
 					},
 				}
+				// The refresh grant looks the user up again.
+				s.lc = newTestWhoIsClient(t, s.refreshToken[tt.refreshToken].RemoteUser, false)
+
 				// Always set up the correct client for this refresh token
 				s.funnelClients["test-client"] = &FunnelClient{
 					ID:     "test-client",
@@ -866,10 +870,11 @@ func TestRefreshTokenWithResources(t *testing.T) {
 				ValidTill: time.Now().Add(time.Hour),
 				RemoteUser: &apitype.WhoIsResponse{
 					Node: &tailcfg.Node{
-						ID:   1,
-						Name: "node1.example.ts.net",
-						User: tailcfg.UserID(1),
-						Key:  key.NodePublic{},
+						ID:        1,
+						Name:      "node1.example.ts.net",
+						User:      tailcfg.UserID(1),
+						Key:       key.NodePublic{},
+						Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 					},
 					UserProfile: &tailcfg.UserProfile{
 						LoginName:   "user@example.com",
@@ -882,6 +887,7 @@ func TestRefreshTokenWithResources(t *testing.T) {
 			}
 			s.refreshToken[rt] = ar
 			s.funnelClients["test-client"] = ar.FunnelRP
+			s.lc = newTestWhoIsClient(t, ar.RemoteUser, false)
 
 			// Create request
 			form := url.Values{
@@ -928,9 +934,10 @@ func TestRefreshTokenScopePreservation(t *testing.T) {
 		ValidTill: time.Now().Add(time.Hour),
 		RemoteUser: &apitype.WhoIsResponse{
 			Node: &tailcfg.Node{
-				ID:   1,
-				Name: "node1.example.ts.net",
-				User: tailcfg.UserID(1),
+				ID:        1,
+				Name:      "node1.example.ts.net",
+				User:      tailcfg.UserID(1),
+				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 			},
 			UserProfile: &tailcfg.UserProfile{
 				LoginName:   "user@example.com",
@@ -938,6 +945,7 @@ func TestRefreshTokenScopePreservation(t *testing.T) {
 			},
 		},
 	}
+	s.lc = newTestWhoIsClient(t, s.refreshToken[rt].RemoteUser, false)
 	s.funnelClients["test-client"] = &FunnelClient{
 		ID:     "test-client",
 		Secret: "test-secret",
@@ -988,6 +996,252 @@ func TestRefreshTokenScopePreservation(t *testing.T) {
 		}
 	} else {
 		t.Error("new refresh token not found in server state")
+	}
+}
+
+// refreshRecheckWhoIs returns a WhoIs response for node 1001 at 100.64.0.10,
+// owned by the given user, with an optional tsidp grant carrying extraClaims.
+func refreshRecheckWhoIs(userID tailcfg.UserID, login string, extraClaims map[string]any) *apitype.WhoIsResponse {
+	w := &apitype.WhoIsResponse{
+		Node: &tailcfg.Node{
+			ID:        1001,
+			Name:      "laptop.tail-scale.ts.net.",
+			User:      userID,
+			Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.10/32")},
+		},
+		UserProfile: &tailcfg.UserProfile{ID: userID, LoginName: login, DisplayName: login},
+	}
+	if extraClaims != nil {
+		w.CapMap = tailcfg.PeerCapMap{
+			tailcfg.PeerCapabilityTsIDP: marshalCapRules([]capRule{{ExtraClaims: extraClaims}}),
+		}
+	}
+	return w
+}
+
+// addrRecorder wraps a whoisRoundTripper and records the address of each
+// WhoIs lookup.
+type addrRecorder struct {
+	*whoisRoundTripper
+	addrs []string
+}
+
+func (r *addrRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.addrs = append(r.addrs, req.URL.Query().Get("addr"))
+	return r.whoisRoundTripper.RoundTrip(req)
+}
+
+// TestRefreshTokenRechecksUser checks that the refresh_token grant looks the
+// user up again: it refuses the refresh when the user or node has changed or
+// can no longer be found, and otherwise issues tokens from the current WhoIs
+// result.
+func TestRefreshTokenRechecksUser(t *testing.T) {
+	const (
+		clientID     = "test-client"
+		clientSecret = "test-secret"
+		redirectURI  = "https://rp.example.com/callback"
+	)
+	alice := func() *apitype.WhoIsResponse {
+		return refreshRecheckWhoIs(501, "alice@example.com", map[string]any{"role": "admin"})
+	}
+
+	tests := []struct {
+		name string
+		// afterLogin changes what WhoIs returns before the refresh.
+		afterLogin func(rt *whoisRoundTripper)
+		wantOK     bool
+		wantRole   any // expected "role" claim in the refreshed ID token
+	}{
+		{
+			name:       "same user and node",
+			afterLogin: func(rt *whoisRoundTripper) {},
+			wantOK:     true,
+			wantRole:   "admin",
+		},
+		{
+			name: "grant changed",
+			afterLogin: func(rt *whoisRoundTripper) {
+				rt.response = refreshRecheckWhoIs(501, "alice@example.com", map[string]any{"role": "viewer"})
+			},
+			wantOK:   true,
+			wantRole: "viewer",
+		},
+		{
+			name: "grant removed",
+			afterLogin: func(rt *whoisRoundTripper) {
+				rt.response = refreshRecheckWhoIs(501, "alice@example.com", nil)
+			},
+			wantOK:   true,
+			wantRole: nil,
+		},
+		{
+			name:       "WhoIs fails",
+			afterLogin: func(rt *whoisRoundTripper) { rt.err = true },
+		},
+		{
+			name: "node now belongs to another user",
+			afterLogin: func(rt *whoisRoundTripper) {
+				rt.response = refreshRecheckWhoIs(502, "bob@example.com", nil)
+			},
+		},
+		{
+			name: "node now tagged",
+			afterLogin: func(rt *whoisRoundTripper) {
+				w := alice()
+				w.Node.Tags = []string{"tag:server"}
+				w.Node.User = tailcfg.UserID(999) // tagged-devices
+				rt.response = w
+			},
+		},
+		{
+			name: "node key expired",
+			afterLogin: func(rt *whoisRoundTripper) {
+				w := alice()
+				w.Node.Expired = true
+				rt.response = w
+			},
+		},
+		{
+			name: "address now belongs to another node",
+			afterLogin: func(rt *whoisRoundTripper) {
+				w := alice()
+				w.Node.ID = 2002
+				rt.response = w
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			whois := &whoisRoundTripper{response: alice()}
+			rec := &addrRecorder{whoisRoundTripper: whois}
+			srv := setupTestServer(t, &local.Client{Transport: rec})
+			srv.funnelClients[clientID].RedirectURIs = []string{redirectURI}
+
+			postToken := func(form url.Values) *httptest.ResponseRecorder {
+				t.Helper()
+				req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("Accept", "application/json")
+				rr := httptest.NewRecorder()
+				srv.serveToken(rr, req)
+				return rr
+			}
+
+			// Log in as alice through /authorize, which calls WhoIs, and
+			// exchange the code.
+			q := url.Values{
+				"client_id":    {clientID},
+				"redirect_uri": {redirectURI},
+				"scope":        {"openid email"},
+			}
+			req := httptest.NewRequest("GET", "/authorize?"+q.Encode(), nil)
+			req.RemoteAddr = "100.64.0.10:12345"
+			rr := httptest.NewRecorder()
+			srv.serveAuthorize(rr, req)
+			if rr.Code != http.StatusFound {
+				t.Fatalf("authorize: got %d: %s", rr.Code, rr.Body.String())
+			}
+			loc, err := url.Parse(rr.Header().Get("Location"))
+			if err != nil {
+				t.Fatalf("parse redirect: %v", err)
+			}
+			rr = postToken(url.Values{
+				"grant_type":    {"authorization_code"},
+				"code":          {loc.Query().Get("code")},
+				"redirect_uri":  {redirectURI},
+				"client_id":     {clientID},
+				"client_secret": {clientSecret},
+			})
+			if rr.Code != http.StatusOK {
+				t.Fatalf("code exchange: got %d: %s", rr.Code, rr.Body.String())
+			}
+			var tok oidcTokenResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &tok); err != nil {
+				t.Fatalf("decode token response: %v", err)
+			}
+
+			tt.afterLogin(whois)
+			rec.addrs = nil
+
+			// Refresh twice, so a user who still passes the check can keep
+			// refreshing with each new refresh token.
+			rt := tok.RefreshToken
+			for i := range 2 {
+				rr = postToken(url.Values{
+					"grant_type":    {"refresh_token"},
+					"refresh_token": {rt},
+					"client_id":     {clientID},
+					"client_secret": {clientSecret},
+				})
+				// The refresh request comes from the relying party, so the
+				// user must be looked up by the node address stored at login.
+				if len(rec.addrs) != i+1 || rec.addrs[i] != "100.64.0.10" {
+					t.Errorf("refresh %d: WhoIs lookups %q, want one more for 100.64.0.10", i, rec.addrs)
+				}
+				if !tt.wantOK {
+					if rr.Code != http.StatusBadRequest {
+						t.Fatalf("refresh %d: got %d, want 400 (refresh should be refused)", i, rr.Code)
+					}
+					var errResp httpErrorResponse
+					if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+						t.Fatalf("decode error response: %v", err)
+					}
+					if errResp.Error != ecInvalidGrant {
+						t.Fatalf("refresh %d: got error %q, want %q", i, errResp.Error, ecInvalidGrant)
+					}
+					return
+				}
+				if rr.Code != http.StatusOK {
+					t.Fatalf("refresh %d: got %d: %s", i, rr.Code, rr.Body.String())
+				}
+				var got oidcTokenResponse
+				if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+					t.Fatalf("decode refresh response: %v", err)
+				}
+				idTok, err := jwt.ParseSigned(got.IDToken, []jose.SignatureAlgorithm{jose.RS256})
+				if err != nil {
+					t.Fatalf("parse id_token: %v", err)
+				}
+				var claims map[string]any
+				if err := idTok.Claims(oidcTestingPublicKey(t), &claims); err != nil {
+					t.Fatalf("verify id_token: %v", err)
+				}
+				if claims["sub"] != "userid:501" || claims["email"] != "alice@example.com" {
+					t.Errorf("refresh %d: got sub=%v email=%v, want alice", i, claims["sub"], claims["email"])
+				}
+				if claims["role"] != tt.wantRole {
+					t.Errorf("refresh %d: got role=%v, want %v", i, claims["role"], tt.wantRole)
+				}
+				rt = got.RefreshToken
+			}
+		})
+	}
+}
+
+// TestRecheckRefreshUserRefusesWithoutLookup checks that the refresh re-check
+// refuses, rather than skips, when it has nothing to look up or no way to
+// look it up.
+func TestRecheckRefreshUserRefusesWithoutLookup(t *testing.T) {
+	alice := refreshRecheckWhoIs(501, "alice@example.com", nil)
+	noAddr := refreshRecheckWhoIs(501, "alice@example.com", nil)
+	noAddr.Node.Addresses = nil
+
+	tests := []struct {
+		name string
+		srv  *IDPServer
+		prev *apitype.WhoIsResponse
+	}{
+		{name: "no LocalClient", srv: &IDPServer{}, prev: alice},
+		{name: "no stored user", srv: &IDPServer{lc: newTestWhoIsClient(t, alice, false)}, prev: nil},
+		{name: "no stored node address", srv: &IDPServer{lc: newTestWhoIsClient(t, alice, false)}, prev: noAddr},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if who, err := tt.srv.recheckRefreshUser(t.Context(), tt.prev); err == nil {
+				t.Fatalf("got user %v, want an error", who.UserProfile.LoginName)
+			}
+		})
 	}
 }
 
