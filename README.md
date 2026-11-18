@@ -188,6 +188,7 @@ The `tsidp-server` is configured by several command-line flags:
 | `-funnel`                      | Use Tailscale Funnel to make tsidp available on the public internet so it works with SaaS products | disabled |
 | `-enable-sts`                  | Enable OAuth token exchange using RFC 8693                                                         | disabled |
 | `-advertise-tags <tags>`       | Comma-separated advertise tags (e.g. `tag:tsidp`). Required when using OAuth client secrets        | `""`     |
+| `-login-server <url>`          | Base URL of a non-Tailscale control server (e.g. Headscale). Must be an http(s) URL                | `""`     |
 | `-log <level>`                 | Set logging level: `debug`, `info`, `warn`, `error`                                                | `info`   |
 | `-debug-all-requests`          | For development. Prints all requests and responses                                                 | disabled |
 | `-debug-tsnet`                 | For development. Enables debug level logging with tsnet connection                                 | disabled |
@@ -210,6 +211,7 @@ These environment variables are used when tsidp does not have any state informat
 - `TS_AUTHKEY=<key>`: Key for registering a tsidp as a new node on your tailnet. Can be a traditional auth key or OAuth client secret (tskey-client-xxx). If omitted, a link will be printed to manually register.
 - `TS_AUTHKEY_FILE=<path>` / `-authkey-file <path>`: Same as `TS_AUTHKEY`, but reads the key from a file - useful when your key comes from a Docker/Kubernetes secret instead of an env var. Don't set this alongside `TS_AUTHKEY`; tsidp will refuse to start rather than guess which one you meant. If the file is missing, tsidp just logs a warning and carries on (it may already be registered from a previous boot). No effect with `-use-local-tailscaled`.
 - `TS_ADVERTISE_TAGS=<tags>`: Comma-separated advertise tags (e.g., "tag:tsidp,tag:server"). Optional, but required when using OAuth client secrets.
+- `TS_LOGIN_SERVER=<url>` / `-login-server <url>`: Base URL of the control server to use instead of the Tailscale default (`https://controlplane.tailscale.com`), for example a [Headscale](https://github.com/juanfont/headscale) server. Must be an absolute `http://` or `https://` URL; tsidp refuses to start otherwise (credentials, a query string or a fragment are also rejected). When unset, tsnet's own `TS_CONTROL_URL` environment variable is still honored; when set, `-login-server` / `TS_LOGIN_SERVER` takes precedence over `TS_CONTROL_URL`. No effect with `-use-local-tailscaled` (configure `tailscaled` itself with `tailscale up --login-server` instead).
 - `TSNET_FORCE_LOGIN=1`: Force re-login of the node. Useful during development.
 
 ### Docker Environment Variables
@@ -234,6 +236,7 @@ The Docker image exposes the CLI flags through environment variables. If omitted
 | `TS_AUTHKEY=<key>`                       | _(env var only)_           |
 | `TS_AUTHKEY_FILE=<path>`                 | `-authkey-file <path>`     |
 | `TS_ADVERTISE_TAGS=<tags>`               | `-advertise-tags <tags>`   |
+| `TS_LOGIN_SERVER=<url>`                  | `-login-server <url>`      |
 
 ## Application Configuration Guides (WIP)
 
