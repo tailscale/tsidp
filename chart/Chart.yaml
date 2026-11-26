@@ -1,0 +1,28 @@
+apiVersion: v2
+name: tsidp
+description: A Helm chart for Tailscale tsidp (OIDC Identity Provider)
+home: https://github.com/tailscale/tsidp
+
+keywords:
+  - "tailscale"
+  - "vpn"
+  - "ingress"
+  - "egress"
+  - "wireguard"
+  - "oidc"
+  - "tsidp"
+
+sources:
+  - https://github.com/tailscale/tsidp
+
+type: application
+
+maintainers:
+  - name: tailscale-maintainers
+    url: https://tailscale.com/
+
+# version will be set to Tailscale repo tag (without 'v') at release time.
+version: 0.1.0
+
+# appVersion will be set to Tailscale repo tag at release time.
+appVersion: "latest"
