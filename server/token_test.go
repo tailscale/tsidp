@@ -1956,3 +1956,142 @@ func TestTokenCORSHeaders(t *testing.T) {
 		t.Errorf("expected AccessControl-Allow-Headers to be '*', got %s", ah)
 	}
 }
+
+// TestTokenResponseNotCacheable verifies that successful token responses
+// carry the no-store and no-cache headers required by RFC 6749 section 5.1.
+func TestTokenResponseNotCacheable(t *testing.T) {
+	remoteUser := &apitype.WhoIsResponse{
+		Node: &tailcfg.Node{
+			ID:        123,
+			Name:      "test-node.test.ts.net.",
+			User:      456,
+			Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
+		},
+		UserProfile: &tailcfg.UserProfile{LoginName: "alice@example.com"},
+	}
+	funnelRP := &FunnelClient{
+		ID:           "test-client",
+		Secret:       "test-secret",
+		RedirectURIs: []string{"https://rp.example.com/callback"},
+	}
+
+	s := &IDPServer{
+		code: map[string]*AuthRequest{
+			"valid-code": {
+				ClientID:    "test-client",
+				RedirectURI: "https://rp.example.com/callback",
+				ValidTill:   time.Now().Add(5 * time.Minute),
+				RemoteUser:  remoteUser,
+				FunnelRP:    funnelRP,
+			},
+		},
+		refreshToken: map[string]*AuthRequest{
+			"valid-refresh": {
+				ClientID:    "test-client",
+				RedirectURI: "https://rp.example.com/callback",
+				ValidTill:   time.Now().Add(time.Hour),
+				RemoteUser:  remoteUser,
+				FunnelRP:    funnelRP,
+			},
+		},
+		lc: newTestWhoIsClient(t, remoteUser, false),
+	}
+	s.lazySigner.Set(oidcTestingSigner(t))
+
+	tests := []struct {
+		name string
+		form url.Values
+	}{
+		{
+			name: "authorization_code",
+			form: url.Values{
+				"grant_type":   {"authorization_code"},
+				"code":         {"valid-code"},
+				"redirect_uri": {"https://rp.example.com/callback"},
+			},
+		},
+		{
+			name: "refresh_token",
+			form: url.Values{
+				"grant_type":    {"refresh_token"},
+				"refresh_token": {"valid-refresh"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.form.Set("client_id", "test-client")
+			tt.form.Set("client_secret", "test-secret")
+			req := httptest.NewRequest("POST", "/token", strings.NewReader(tt.form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rr := httptest.NewRecorder()
+			s.serveToken(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+			}
+			if got := rr.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control = %q, want %q", got, "no-store")
+			}
+			if got := rr.Header().Get("Pragma"); got != "no-cache" {
+				t.Errorf("Pragma = %q, want %q", got, "no-cache")
+			}
+		})
+	}
+}
+
+// TestTokenExchangeResponseNotCacheable verifies that a successful RFC 8693
+// token exchange response carries the no-store and no-cache headers required
+// by RFC 6749 section 5.1.
+func TestTokenExchangeResponseNotCacheable(t *testing.T) {
+	remoteUser := &apitype.WhoIsResponse{
+		Node: &tailcfg.Node{
+			ID:   123,
+			Name: "test-node.test.ts.net.",
+			User: 456,
+		},
+		UserProfile: &tailcfg.UserProfile{LoginName: "alice@example.com"},
+		CapMap: tailcfg.PeerCapMap{
+			tailcfg.PeerCapabilityTsIDP: marshalCapRules([]capRule{{
+				Users:     []string{"*"},
+				Resources: []string{"https://api.example.com"},
+			}}),
+		},
+	}
+	s := &IDPServer{
+		enableSTS: true,
+		funnelClients: map[string]*FunnelClient{
+			"test-client": {ID: "test-client", Secret: "test-secret"},
+		},
+		accessToken: map[string]*AuthRequest{
+			"subject-token": {
+				ClientID:   "test-client",
+				ValidTill:  time.Now().Add(5 * time.Minute),
+				RemoteUser: remoteUser,
+			},
+		},
+	}
+
+	form := url.Values{
+		"grant_type":         {"urn:ietf:params:oauth:grant-type:token-exchange"},
+		"subject_token":      {"subject-token"},
+		"subject_token_type": {"urn:ietf:params:oauth:token-type:access_token"},
+		"audience":           {"https://api.example.com"},
+		"client_id":          {"test-client"},
+		"client_secret":      {"test-secret"},
+	}
+	req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	s.serveToken(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want %q", got, "no-store")
+	}
+	if got := rr.Header().Get("Pragma"); got != "no-cache" {
+		t.Errorf("Pragma = %q, want %q", got, "no-cache")
+	}
+}
