@@ -275,6 +275,73 @@ func TestIntrospectTokenExpiration(t *testing.T) {
 	}
 }
 
+func TestIntrospectRealishEmail(t *testing.T) {
+	tests := []struct {
+		loginName string
+		wantEmail string
+	}{
+		{"bo@github", "bo@github.idp.test.ts.net"},
+		{"alice@example.com", "alice@example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.loginName, func(t *testing.T) {
+			s := &IDPServer{
+				hostname:      "idp.test.ts.net",
+				serverURL:     "https://idp.test.ts.net",
+				accessToken:   make(map[string]*AuthRequest),
+				funnelClients: make(map[string]*FunnelClient),
+			}
+
+			s.funnelClients["test-client"] = &FunnelClient{
+				ID:     "test-client",
+				Secret: "test-secret",
+			}
+			s.accessToken["test-token"] = &AuthRequest{
+				ValidTill: time.Now().Add(10 * time.Minute),
+				FunnelRP:  s.funnelClients["test-client"],
+				ClientID:  "test-client",
+				Scopes:    []string{"openid", "email"},
+				RemoteUser: &apitype.WhoIsResponse{
+					Node: &tailcfg.Node{
+						User: 12345,
+					},
+					UserProfile: &tailcfg.UserProfile{
+						LoginName: tt.loginName,
+					},
+				},
+			}
+
+			form := url.Values{}
+			form.Set("token", "test-token")
+			form.Set("client_id", "test-client")
+			form.Set("client_secret", "test-secret")
+
+			req := httptest.NewRequest("POST", "/introspect", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			rr := httptest.NewRecorder()
+			s.serveIntrospect(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d", rr.Code)
+			}
+
+			var resp map[string]any
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("failed to unmarshal response: %v", err)
+			}
+
+			if active, ok := resp["active"].(bool); !ok || !active {
+				t.Error("expected active: true for valid token")
+			}
+			if resp["email"] != tt.wantEmail {
+				t.Errorf("expected email %q, got %v", tt.wantEmail, resp["email"])
+			}
+		})
+	}
+}
+
 // TestIntrospectWithResources tests introspection with resources
 func TestIntrospectWithResources(t *testing.T) {
 	s := &IDPServer{
