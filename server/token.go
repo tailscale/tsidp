@@ -916,7 +916,7 @@ func (s *IDPServer) serveIntrospect(w http.ResponseWriter, r *http.Request) {
 					}
 				case "email":
 					if ar.RemoteUser.UserProfile != nil {
-						resp["email"] = ar.RemoteUser.UserProfile.LoginName
+						resp["email"] = s.realishEmail(ar.RemoteUser.UserProfile.LoginName)
 					}
 				}
 			}
