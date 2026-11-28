@@ -274,6 +274,7 @@ func TestPKCE(t *testing.T) {
 		codeVerifier     string
 		expectAuthError  bool
 		expectTokenError bool
+		expectErrorCode  string // if set, the expected JSON error code
 		checkResponse    func(t *testing.T, body []byte)
 	}{
 		{
@@ -332,6 +333,13 @@ func TestPKCE(t *testing.T) {
 			name:         "no PKCE parameters - backward compatibility",
 			authQuery:    "client_id=test-client&redirect_uri=https://example.com/callback",
 			codeVerifier: "", // no code_verifier sent
+		},
+		{
+			name:             "code_verifier without code_challenge - PKCE downgrade",
+			authQuery:        "client_id=test-client&redirect_uri=https://example.com/callback",
+			codeVerifier:     "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+			expectTokenError: true,
+			expectErrorCode:  "invalid_grant",
 		},
 	}
 
@@ -409,6 +417,7 @@ func TestPKCE(t *testing.T) {
 
 			req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Accept", "application/json")
 
 			rr := httptest.NewRecorder()
 			s.serveToken(rr, req)
@@ -416,6 +425,15 @@ func TestPKCE(t *testing.T) {
 			if tt.expectTokenError {
 				if rr.Code == http.StatusOK {
 					t.Errorf("expected token error, got status 200")
+				}
+				if tt.expectErrorCode != "" {
+					var errResp httpErrorResponse
+					if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+						t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+					}
+					if errResp.Error != tt.expectErrorCode {
+						t.Errorf("expected error code %q, got %q", tt.expectErrorCode, errResp.Error)
+					}
 				}
 			} else {
 				if rr.Code != http.StatusOK {
@@ -425,6 +443,185 @@ func TestPKCE(t *testing.T) {
 
 			if tt.checkResponse != nil && rr.Code == http.StatusOK {
 				tt.checkResponse(t, rr.Body.Bytes())
+			}
+		})
+	}
+}
+
+// TestPKCEDowngrade tests that the token endpoint rejects a code_verifier for
+// a code issued without a code_challenge (RFC 9700 section 2.1.1), so a code
+// obtained without PKCE cannot be injected into a client that uses PKCE.
+// Codes come from serveAuthorize, so the code_challenge it stores is tested too.
+func TestPKCEDowngrade(t *testing.T) {
+	const (
+		// From RFC 7636 Appendix B
+		verifier  = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+		challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+	)
+
+	tests := []struct {
+		name            string
+		codeChallenge   string   // S256 code_challenge sent to /authorize; empty sends none
+		codeVerifier    []string // code_verifier values sent to /token; nil omits it
+		expectStatus    int
+		expectErrorCode string // expected JSON error code; empty means tokens are issued
+		expectErrorDesc string // expected substring of error_description
+	}{
+		{
+			name:            "code_verifier without code_challenge",
+			codeVerifier:    []string{verifier},
+			expectStatus:    http.StatusBadRequest,
+			expectErrorCode: ecInvalidGrant,
+			expectErrorDesc: "no code_challenge",
+		},
+		{
+			name:         "no code_challenge or code_verifier",
+			expectStatus: http.StatusOK,
+		},
+		{
+			// RFC 6749 section 3.2: parameters sent without a value MUST be
+			// treated as if they were omitted from the request.
+			name:         "empty code_verifier without code_challenge",
+			codeVerifier: []string{""},
+			expectStatus: http.StatusOK,
+		},
+		{
+			name:          "code_challenge with correct code_verifier",
+			codeChallenge: challenge,
+			codeVerifier:  []string{verifier},
+			expectStatus:  http.StatusOK,
+		},
+		{
+			name:            "code_challenge without code_verifier",
+			codeChallenge:   challenge,
+			expectStatus:    http.StatusBadRequest,
+			expectErrorCode: ecInvalidRequest,
+			expectErrorDesc: "code_verifier is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lc := newTestWhoIsClient(t, &apitype.WhoIsResponse{
+				Node: &tailcfg.Node{
+					ID:   1,
+					Name: "node1.example.ts.net",
+					User: tailcfg.UserID(1),
+				},
+				UserProfile: &tailcfg.UserProfile{
+					LoginName:   "user@example.com",
+					DisplayName: "Test User",
+				},
+			}, false)
+			srv := setupTestServer(t, lc)
+			srv.funnelClients["test-client"].RedirectURIs = []string{"https://rp.example.com/callback"}
+
+			// Get a code from /authorize
+			query := url.Values{
+				"client_id":     {"test-client"},
+				"redirect_uri":  {"https://rp.example.com/callback"},
+				"response_type": {"code"},
+				"scope":         {"openid"},
+			}
+			if tt.codeChallenge != "" {
+				query.Set("code_challenge", tt.codeChallenge)
+				query.Set("code_challenge_method", "S256")
+			}
+			req := httptest.NewRequest("GET", "/authorize?"+query.Encode(), nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			rr := httptest.NewRecorder()
+			srv.serveAuthorize(rr, req)
+
+			if rr.Code != http.StatusFound {
+				t.Fatalf("authorize: expected status %d, got %d: %s", http.StatusFound, rr.Code, rr.Body.String())
+			}
+			redirectURL, err := url.Parse(rr.Header().Get("Location"))
+			if err != nil {
+				t.Fatalf("authorize: bad Location header: %v", err)
+			}
+			code := redirectURL.Query().Get("code")
+			if code == "" {
+				t.Fatalf("authorize: expected code in redirect, got %s", redirectURL)
+			}
+
+			postToken := func(codeVerifier []string) *httptest.ResponseRecorder {
+				t.Helper()
+				form := url.Values{
+					"grant_type":    {"authorization_code"},
+					"code":          {code},
+					"redirect_uri":  {"https://rp.example.com/callback"},
+					"client_id":     {"test-client"},
+					"client_secret": {"test-secret"},
+				}
+				if codeVerifier != nil {
+					form["code_verifier"] = codeVerifier
+				}
+				req := httptest.NewRequest("POST", "/token", strings.NewReader(form.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				req.Header.Set("Accept", "application/json")
+				rr := httptest.NewRecorder()
+				srv.serveToken(rr, req)
+				return rr
+			}
+
+			rr = postToken(tt.codeVerifier)
+			if rr.Code != tt.expectStatus {
+				t.Errorf("expected status %d, got %d: %s", tt.expectStatus, rr.Code, rr.Body.String())
+			}
+
+			srv.mu.Lock()
+			numAccess, numRefresh := len(srv.accessToken), len(srv.refreshToken)
+			srv.mu.Unlock()
+
+			if tt.expectErrorCode != "" {
+				var errResp httpErrorResponse
+				if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+					t.Fatalf("expected JSON error response, got: %s", rr.Body.String())
+				}
+				if errResp.Error != tt.expectErrorCode {
+					t.Errorf("expected error code %q, got %q", tt.expectErrorCode, errResp.Error)
+				}
+				if !strings.Contains(errResp.ErrorDescription, tt.expectErrorDesc) {
+					t.Errorf("expected error description containing %q, got %q", tt.expectErrorDesc, errResp.ErrorDescription)
+				}
+				if numAccess != 0 || numRefresh != 0 {
+					t.Errorf("expected no tokens to be stored, got %d access and %d refresh tokens", numAccess, numRefresh)
+				}
+			} else {
+				var resp oidcTokenResponse
+				if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("failed to unmarshal response: %v", err)
+				}
+				if resp.IDToken == "" || resp.AccessToken == "" {
+					t.Errorf("expected id_token and access_token, got: %s", rr.Body.String())
+				}
+				if numAccess != 1 {
+					t.Errorf("expected 1 access token to be stored, got %d", numAccess)
+				}
+			}
+
+			// Codes are single use, whether or not the exchange succeeded, so
+			// a rejected code cannot be redeemed by retrying without a
+			// code_verifier.
+			srv.mu.Lock()
+			_, ok := srv.code[code]
+			srv.mu.Unlock()
+			if ok {
+				t.Error("expected authorization code to be consumed")
+			}
+			rr = postToken(nil)
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("retry: expected status 400, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var errResp httpErrorResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+				t.Fatalf("retry: expected JSON error response, got: %s", rr.Body.String())
+			}
+			if errResp.Error != ecInvalidGrant {
+				t.Errorf("retry: expected error code %q, got %q", ecInvalidGrant, errResp.Error)
+			}
+			if !strings.Contains(errResp.ErrorDescription, "code not found") {
+				t.Errorf("retry: expected error description containing %q, got %q", "code not found", errResp.ErrorDescription)
 			}
 		})
 	}
