@@ -535,7 +535,10 @@ func (s *IDPServer) serveTokenExchange(w http.ResponseWriter, r *http.Request) {
 	mak.Set(&s.accessToken, newAccessToken, newAR)
 	s.mu.Unlock()
 
-	// Return RFC 8693 compliant response
+	// Return RFC 8693 compliant response. RFC 6749 section 5.1: token
+	// responses must not be cached.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]any{
 		"access_token":      newAccessToken,
@@ -684,6 +687,9 @@ func (s *IDPServer) issueTokens(w http.ResponseWriter, r *http.Request, ar *Auth
 		slog.String("redirect_uri", ar.RedirectURI),
 	)
 
+	// RFC 6749 section 5.1: token responses must not be cached.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(oidcTokenResponse{
 		AccessToken:  at,
